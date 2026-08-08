@@ -1,0 +1,41 @@
+[project]
+name = "athena-mcp"
+version = "0.1.0"
+description = "Athena-MCP: Dashboard de gerenciamento com OmniRouter para CLIs de agentes de IA"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "João Paulo", email = "joao@example.com"}
+]
+keywords = ["mcp", "ai", "agent", "cli", "router", "omnirouter"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "jinja2>=3.1.0",
+    "pydantic>=2.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27.0", "ruff>=0.5.0"]
+
+[project.scripts]
+athena = "athena.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["athena*"]

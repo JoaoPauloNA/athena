@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Athena-MCP{% endblock %}
+
+{% block content %}
+<h1>🔱 Athena-MCP Dashboard</h1>
+<p>Gerencie seus combos de agentes de IA com failover automático.</p>
+
+<div class="card-grid">
+  <!-- Card 1: CLIs -->
+  <article>
+    <header>
+      <h3>🖥️ CLIs Detectadas</h3>
+    </header>
+    <div hx-get="/hx/providers" hx-trigger="load">
+      <p aria-busy="true">Detectando CLIs...</p>
+    </div>
+    <footer>
+      <a href="/providers" role="button" class="secondary">Ver todos</a>
+      <button hx-post="/hx/providers/refresh" hx-target="closest article div" class="outline">🔄 Re-detectar</button>
+    </footer>
+  </article>
+
+  <!-- Card 2: Combos -->
+  <article>
+    <header>
+      <h3>🔀 Combos</h3>
+    </header>
+    <div hx-get="/hx/combos" hx-trigger="load">
+      <p aria-busy="true">Carregando combos...</p>
+    </div>
+    <footer>
+      <a href="/combos" role="button" class="secondary">Gerenciar</a>
+      <a href="/combos/new" role="button">+ Novo</a>
+    </footer>
+  </article>
+
+  <!-- Card 3: Uso -->
+  <article>
+    <header>
+      <h3>📊 Uso</h3>
+    </header>
+    <div hx-get="/hx/usage" hx-trigger="load,every 60s">
+      <p aria-busy="true">Carregando métricas...</p>
+    </div>
+  </article>
+
+  <!-- Card 4: Info -->
+  <article>
+    <header>
+      <h3>ℹ️ Sobre</h3>
+    </header>
+    <p>O Athena-MCP é um dashboard de gerenciamento com conceito OmniRouter.</p>
+    <p>Crie <strong>combos</strong> — sequências de providers com <strong>failover automático</strong> quando um esgota.</p>
+    <hr>
+    <p><strong>Providers suportados:</strong></p>
+    <ul>
+      <li>🤖 Claude Code (Anthropic)</li>
+      <li>🎯 Cursor Agent</li>
+      <li>💎 agy (Gemini / Antigravity)</li>
+      <li>🔓 OpenClaude</li>
+    </ul>
+  </article>
+</div>
+{% endblock %}

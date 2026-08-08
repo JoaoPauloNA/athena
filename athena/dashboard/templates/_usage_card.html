@@ -1,0 +1,12 @@
+{% if total_calls > 0 %}
+  <p><strong>Total de chamadas:</strong> {{ total_calls }}</p>
+  {% for provider_id, data in usage.items() %}
+    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+      <span>{{ provider_id }}</span>
+      <span>{{ data.calls }} chamadas | {{ data.estimated_tokens }} tokens est.</span>
+    </div>
+  {% endfor %}
+{% else %}
+  <p style="color: var(--muted-color);">Nenhuma chamada registrada ainda.</p>
+  <p><small>Use o combo para começar a acumular métricas.</small></p>
+{% endif %}

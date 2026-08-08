@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}CLIs - Athena-MCP{% endblock %}
+
+{% block content %}
+<h1>🖥️ CLIs Detectadas</h1>
+
+<article>
+  <div hx-get="/hx/providers" hx-trigger="load">
+    <p aria-busy="true">Carregando...</p>
+  </div>
+  <footer>
+    <button hx-post="/hx/providers/refresh" hx-target="previous div">🔄 Re-detectar CLIs</button>
+  </footer>
+</article>
+{% endblock %}
