@@ -5,7 +5,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-**OmniRouter para CLIs de agentes de IA — um único servidor MCP para detectar, rotear, verificar e economizar entre todas as CLIs de IA da sua máquina.**
+**Um único servidor MCP para detectar, rotear, verificar e economizar entre todas as CLIs de IA da sua máquina.**
+
+> 💡 O roteamento do Athena é inspirado no conceito do OmniRoute — mesma ideia, implementação independente.
 
 🇺🇸 [Read in English](README.md) · 🇨🇳 [阅读中文](README.zh-CN.md)
 

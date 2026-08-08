@@ -6,7 +6,9 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**OmniRouter for AI-agent CLIs — one MCP server to detect, route, verify and economize across every AI CLI on your machine.**
+**One MCP server to detect, route, verify and economize across every AI CLI on your machine.**
+
+> 💡 Athena's routing approach is inspired by the OmniRoute concept — same idea, independent implementation.
 
 🇧🇷 [Leia em Português](README.pt-BR.md) · 🇨🇳 [阅读中文](README.zh-CN.md)
 

@@ -9,7 +9,7 @@ import sys
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="athena",
-        description="Athena-MCP: Dashboard OmniRouter para CLIs de agentes de IA",
+        description="Athena-MCP: roteador e dashboard para CLIs de agentes de IA (inspirado no OmniRoute)",
     )
     subparsers = parser.add_subparsers(dest="command", help="Comandos disponíveis")
 

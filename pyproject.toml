@@ -1,14 +1,14 @@
 [project]
 name = "athena-mcp"
 version = "0.1.0"
-description = "Athena-MCP: Dashboard de gerenciamento com OmniRouter para CLIs de agentes de IA"
+description = "Athena-MCP: router and dashboard for AI-agent CLIs — detect, route, verify and economize (inspired by OmniRoute)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "João Paulo", email = "joao@example.com"}
 ]
-keywords = ["mcp", "ai", "agent", "cli", "router", "omnirouter"]
+keywords = ["mcp", "ai", "agent", "cli", "router", "orchestration"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

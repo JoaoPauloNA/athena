@@ -226,7 +226,7 @@ def _handle_request(message: dict) -> dict | None:
                 "serverInfo": {
                     "name": "athena-mcp",
                     "version": __version__,
-                    "description": "Athena-MCP: OmniRouter com failover automático para CLIs de agentes de IA.",
+                    "description": "Athena-MCP: roteador com failover automático para CLIs de agentes de IA.",
                 },
             },
         )
