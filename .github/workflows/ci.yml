@@ -32,3 +32,6 @@ jobs:
 
       - name: Pytest
         run: pytest -q
+        env:
+          # Scan de CLIs no PATH é local demais para CI (e lento no Windows)
+          ATHENA_SKIP_AUTODISCOVERY: "1"

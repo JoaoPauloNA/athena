@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -401,23 +402,45 @@ PROVIDERS: dict[str, ProviderSpec] = {
     ),
 }
 
-# --- Auto-discover no import --------------------------------------------
+# --- Auto-discover LAZY ---------------------------------------------------
+# Escanear o PATH no import era lento e podia travar o startup (cada candidato
+# é testado com --help/--version via subprocess). Agora a varredura acontece
+# só no primeiro uso, com cache. ATHENA_SKIP_AUTODISCOVERY=1 desativa (CI,
+# ambientes restritos).
 
-_AUTO_DISCOVERED = scan_path_for_clis()
-_CUSTOM_PROVIDERS = load_custom_providers()
+_DISCOVERY_LOCK = threading.Lock()
+_ALL_DYNAMIC: dict[str, ProviderSpec] | None = None
 
-# Custom providers têm prioridade sobre auto-detectados
-_ALL_DYNAMIC = {**_AUTO_DISCOVERED, **_CUSTOM_PROVIDERS}
 
-if _ALL_DYNAMIC:
-    for pid, spec in _ALL_DYNAMIC.items():
-        if pid not in PROVIDERS:
-            PROVIDERS[pid] = spec
+def get_dynamic_providers() -> dict[str, ProviderSpec]:
+    """Auto-descoberta + custom providers, com cache; executa só no 1º uso."""
+    global _ALL_DYNAMIC
+    if _ALL_DYNAMIC is not None:
+        return _ALL_DYNAMIC
+    with _DISCOVERY_LOCK:
+        if _ALL_DYNAMIC is not None:
+            return _ALL_DYNAMIC
+        if os.environ.get("ATHENA_SKIP_AUTODISCOVERY") == "1":
+            dynamic: dict[str, ProviderSpec] = load_custom_providers()
+        else:
+            dynamic = {**scan_path_for_clis(), **load_custom_providers()}
+        for pid, spec in dynamic.items():
+            if pid not in PROVIDERS:
+                PROVIDERS[pid] = spec
+        _ALL_DYNAMIC = dynamic
+        return _ALL_DYNAMIC
 
-PROVIDER_IDS: tuple[str, ...] = tuple(
-    list(PROVIDERS.keys())
-    + [pid for pid in _ALL_DYNAMIC if pid not in PROVIDERS]
-)
+
+def get_provider_ids() -> tuple[str, ...]:
+    dynamic = get_dynamic_providers()
+    return tuple(list(PROVIDERS.keys()) + [pid for pid in dynamic if pid not in PROVIDERS])
+
+
+def __getattr__(name: str):
+    """Compat: PROVIDER_IDS continua acessível como atributo, mas é lazy."""
+    if name == "PROVIDER_IDS":
+        return get_provider_ids()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # agy é recomendado só para frontend — chamadas com task_type diferente vêm com aviso.
 PROVIDER_TASK_SCOPE: dict[str, str] = {
@@ -439,9 +462,10 @@ def resolve_binary(spec: ProviderSpec) -> str | None:
 
 def list_providers() -> list[dict]:
     items = []
-    self_provider = detect_self_provider(PROVIDER_IDS)
+    provider_ids = get_provider_ids()
+    self_provider = detect_self_provider(provider_ids)
     meta = catalog_meta()
-    for provider_id in PROVIDER_IDS:
+    for provider_id in provider_ids:
         spec = PROVIDERS[provider_id]
         path = resolve_binary(spec)
         role = get_role(spec.default_role)
@@ -674,7 +698,7 @@ def ask_provider(
     if not result.timed_out and result.error is None:
         result.report_format_ok = check_report_format(result.output)
 
-    if provider_id == detect_self_provider(PROVIDER_IDS):
+    if provider_id == detect_self_provider(get_provider_ids()):
         result.warnings.append(
             "Este provider foi detectado como o próprio CLI orquestrador "
             "(ATHENA_SELF_PROVIDER ou CLAUDECODE=1). Considere delegar a outro "
