@@ -22,3 +22,6 @@ frontend/node_modules/
 
 # Env
 .env
+
+# Harness results (local episodes)
+harness/results/
