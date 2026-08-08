@@ -100,6 +100,15 @@ def _handle_recommend(arguments: dict[str, Any]) -> dict:
     return _text_content(payload)
 
 
+def _handle_list_reliability(arguments: dict[str, Any]) -> dict:
+    from athena.reliability import list_verdicts, reliability_report
+    payload = {
+        "ranking": reliability_report(),
+        "ultimos_episodios": list_verdicts(limit=int(arguments.get("limit", 20))),
+    }
+    return _text_content(payload)
+
+
 TOOLS: list[dict] = [
     {
         "name": "list_providers",
@@ -181,6 +190,16 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "name": "list_reliability",
+        "description": "Ranking local de confiabilidade por CLI (claimed vs verified): quantas vezes cada CLI declarou 'pronto' e era verdade, taxa de relatórios falsos e escaladas. Dados dos vereditos persistidos em ~/.athena/verdicts.json.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Quantos episódios recentes incluir (padrão 20)"},
+            },
+        },
+    },
 ]
 
 TOOL_HANDLERS: dict[str, ToolHandler] = {
@@ -192,6 +211,7 @@ TOOL_HANDLERS: dict[str, ToolHandler] = {
     "list_usage": _handle_list_usage,
     "refresh_models": _handle_refresh_models,
     "recommend": _handle_recommend,
+    "list_reliability": _handle_list_reliability,
 }
 
 

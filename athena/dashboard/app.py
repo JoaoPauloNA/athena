@@ -163,6 +163,14 @@ async def hx_usage(request: Request):
     })
 
 
+@app.get("/hx/reliability")
+async def hx_reliability(request: Request):
+    from athena.reliability import reliability_report
+    return templates.TemplateResponse(request, "_reliability_card.html", {
+        "ranking": reliability_report(),
+    })
+
+
 @app.get("/hx/status")
 async def hx_status():
     return HTMLResponse("🟢 Online")

@@ -762,6 +762,7 @@ def ask_provider_verified(
       4. FALSO pela 2ª vez → escala: o resultado volta com
          verdict.escalado=True para o orquestrador decidir.
     """
+    from athena.reliability import record_verdict
     from athena.verifier import MAX_FIX_ATTEMPTS, build_fix_prompt, verify_report
 
     working_directory = kwargs.get("working_directory")
@@ -779,6 +780,12 @@ def ask_provider_verified(
         )
         verdict.tentativas = attempt
         history.append(verdict.to_dict())
+        record_verdict(
+            provider_id,
+            verdict,
+            task_excerpt=prompt,
+            project=working_directory or "",
+        )
 
         if verdict.verdadeiro is None:
             result.warnings.append(

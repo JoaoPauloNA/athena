@@ -30,10 +30,10 @@ cheap triage avoids spending paid-model quota on verification.
 
 ## Roadmap
 
-- [ ] Persist verdicts per CLI → personal reliability ranking (local
-      claimed-vs-verified rate).
-- [ ] Deterministic mode: execute the claims in the report and compare exit
-      codes; real `git diff` vs declared file scope.
+- [x] Persist verdicts per CLI → personal reliability ranking (local
+      claimed-vs-verified rate), via `list_reliability` and the dashboard
+      Confiabilidade card.
+- [ ] Feed reliability scores back into `recommend` (trust-weighted routing).
 - [ ] `verify=true` support in `run_combo` and `deliberate`.
 - [ ] Longer term: hidden-oracle task suites (tests the agent never sees
       while declaring success), enabling a public, comparable false-success

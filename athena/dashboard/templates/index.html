@@ -45,7 +45,17 @@
     </div>
   </article>
 
-  <!-- Card 4: Info -->
+  <!-- Card 4: Confiabilidade (read-only) -->
+  <article>
+    <header>
+      <h3>🕵️ Confiabilidade</h3>
+    </header>
+    <div hx-get="/hx/reliability" hx-trigger="load,every 60s">
+      <p aria-busy="true">Carregando vereditos...</p>
+    </div>
+  </article>
+
+  <!-- Card 5: Info -->
   <article>
     <header>
       <h3>ℹ️ Sobre</h3>
