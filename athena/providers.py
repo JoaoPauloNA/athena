@@ -779,25 +779,24 @@ def ask_provider_verified(
             executor_provider=provider_id,
         )
         verdict.tentativas = attempt
-        history.append(verdict.to_dict())
-        record_verdict(
-            provider_id,
-            verdict,
-            task_excerpt=prompt,
-            project=working_directory or "",
-        )
 
         if verdict.verdadeiro is None:
+            history.append(verdict.to_dict())
+            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
             result.warnings.append(
                 f"Verificação indisponível ({verdict.motivos[0] if verdict.motivos else 'erro'}) "
                 "— relatório aceito sem checagem."
             )
             break
         if verdict.verdadeiro:
+            history.append(verdict.to_dict())
+            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
             result.verdict = {**verdict.to_dict(), "historico": history}
             return result
 
         if attempt < MAX_FIX_ATTEMPTS:
+            history.append(verdict.to_dict())
+            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
             result.warnings.append(
                 f"Relatório marcado FALSO pelo verificador {verdict.verificador} "
                 f"(tentativa {attempt}); reenviado ao executor para correção."
@@ -808,7 +807,8 @@ def ask_provider_verified(
                 break
         else:
             verdict.escalado = True
-            history[-1] = verdict.to_dict()
+            history.append(verdict.to_dict())
+            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
             result.verdict = {**verdict.to_dict(), "historico": history}
             result.warnings.append(
                 "ESCALADO: relatório marcado FALSO 2 vezes pelo verificador. "
