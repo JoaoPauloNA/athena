@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - **Deterministic verifier** (`athena/dverify.py`): model-free verification layer that re-runs the exact test/lint commands a report claims passed (whitelist only, no shell, per-command timeout) and compares real exit codes, plus checks that files claimed as created actually exist. Conclusive results short-circuit the advisory (model-based) verifier; `ATHENA_VERIFY_MODE=auto|deterministic|advisory` controls the pipeline. 11 new tests (45 total).
 - **Verdict persistence + reliability ranking** (`athena/reliability.py`): every verification episode is recorded redacted (no prompts/reports) in `~/.athena/verdicts.json` (500-record retention). New MCP tool `list_reliability` and a read-only dashboard card show per-CLI claimed-vs-verified rates, false-report rates and escalations. 8 new tests (53 total).
+- **Trust loop closed**: `run_combo` accepts `verify=true` — each provider's report is verified and a FALSE report counts as failure, triggering failover to the next provider (the combo no longer accepts a lying "done"). `recommend` now applies local reliability history (30% weight) on top of public ratings and warns when a provider has ≥50% verified-false reports. 7 new tests (60 total).
 
 ## [0.1.0] - 2026-08-07
 

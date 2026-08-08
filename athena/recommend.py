@@ -116,8 +116,14 @@ def recommend_for_task(
     task_type: str | None = None,
     top_n: int = 3,
     only_installed: bool = True,
+    use_reliability: bool = True,
 ) -> dict:
-    """Recomenda provider+modelo para uma tarefa, com base nas notas."""
+    """Recomenda provider+modelo para uma tarefa, com base nas notas.
+
+    Com use_reliability=True (padrão), o histórico de vereditos persistidos
+    (~/.athena/verdicts.json) ajusta a ordenação: provider com muitos
+    relatórios FALSOS verificados é rebaixado e sinalizado com aviso.
+    """
     role_scores = classify_task(task_description, task_type)
     primary_role = max(role_scores, key=role_scores.get)
     complexity = estimate_complexity(task_description)
@@ -125,6 +131,11 @@ def recommend_for_task(
 
     data = load_ratings()
     catalog = _providers_by_model()
+
+    reliability: dict = {}
+    if use_reliability:
+        from athena.reliability import reliability_report
+        reliability = reliability_report()
 
     suggestions: list[dict] = []
     excluded_heavy: list[str] = []
@@ -162,16 +173,42 @@ def recommend_for_task(
 
         if only_installed and not unique:
             continue
+
+        # Anota confiabilidade do histórico de vereditos em cada provider.
+        warnings: list[str] = []
+        best_conf: float | None = None
+        for item in unique:
+            stats = reliability.get(item["provider"])
+            if not stats:
+                continue
+            item["confiabilidade"] = stats.get("confiabilidade")
+            item["taxa_falso"] = stats.get("taxa_falso")
+            item["episodios"] = stats.get("episodios", 0)
+            conf = stats.get("confiabilidade")
+            if conf is not None:
+                best_conf = conf if best_conf is None else max(best_conf, conf)
+            decididos = stats.get("verdadeiros", 0) + stats.get("falsos", 0)
+            if (stats.get("taxa_falso") or 0) >= 0.5 and decididos >= 3:
+                warnings.append(
+                    f"⚠️ '{item['provider']}' tem {round(stats['taxa_falso'] * 100)}% de "
+                    f"relatórios FALSOS verificados ({decididos} episódios)."
+                )
+
+        # nota ajustada: histórico pesa 30% quando existe (70% nota pública).
+        nota_ajustada = weighted if best_conf is None else weighted * (0.7 + 0.3 * best_conf)
+
         suggestions.append({
             "modelo": entry.get("name"),
             "maker": entry.get("maker"),
             "nota": round(weighted, 1),
+            "nota_ajustada": round(nota_ajustada, 1),
             "installed": bool(unique),
             "onde": unique[:3],
             "motivo": entry.get("note", ""),
+            "avisos_confianca": warnings,
         })
 
-    suggestions.sort(key=lambda s: (s["installed"], s["nota"]), reverse=True)
+    suggestions.sort(key=lambda s: (s["installed"], s["nota_ajustada"]), reverse=True)
     top = suggestions[:top_n]
 
     return {
@@ -191,6 +228,13 @@ def recommend_for_task(
             f"Tarefa '{complexity}': nenhum modelo pesado precisou ser excluído."
         ),
         "dica": _build_tip(top, primary_role),
+        "confianca": (
+            "Histórico de vereditos aplicado: notas ajustadas em até 30% pela "
+            "confiabilidade local (claimed vs verified) de cada provider."
+            if reliability else
+            "Sem histórico de vereditos ainda — rode tarefas com verify=true "
+            "para calibrar as recomendações pela confiabilidade real."
+        ),
     }
 
 

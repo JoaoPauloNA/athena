@@ -44,6 +44,7 @@ def _handle_run_combo(arguments: dict[str, Any]) -> dict:
         prompt,
         working_directory=arguments.get("working_directory"),
         timeout=arguments.get("timeout"),
+        verify=bool(arguments.get("verify", False)),
     )
     return _text_content({
         "combo_id": combo_id,
@@ -122,7 +123,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "run_combo",
-        "description": "Executa um prompt através de um combo Athena-MCP com failover automático.",
+        "description": "Executa um prompt através de um combo Athena-MCP com failover automático. Com verify=true, o relatório de cada provider é checado pelo verificador; relatório FALSO conta como falha e aciona failover.",
         "inputSchema": {
             "type": "object",
             "required": ["prompt"],
@@ -131,6 +132,7 @@ TOOLS: list[dict] = [
                 "prompt": {"type": "string", "description": "Prompt a enviar"},
                 "working_directory": {"type": "string"},
                 "timeout": {"type": "integer"},
+                "verify": {"type": "boolean", "description": "Checa o relatório de cada provider; FALSO aciona failover"},
             },
         },
     },

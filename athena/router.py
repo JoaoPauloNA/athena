@@ -20,11 +20,17 @@ def run_combo(
     timeout: int | None = None,
     heavy_model_authorized: bool = False,
     task_type: str | None = None,
+    verify: bool = False,
 ) -> RunResult:
     """Executa um prompt através de um combo, com failover automático.
 
     Percorre a chain do combo em ordem. Se um provider falha (timeout, erro),
     tenta o próximo da lista conforme a política de failover.
+
+    Com verify=True, o relatório de cada provider passa pelo verificador
+    (determinístico primeiro, advisory depois). Relatório marcado FALSO
+    conta como falha e aciona failover para o próximo provider — o combo
+    não aceita um "pronto" mentiroso.
     """
     combo = get_combo(combo_id)
     if combo is None:
@@ -61,6 +67,38 @@ def run_combo(
 
             # Sucesso
             if result.exit_code == 0 and not result.timed_out:
+                if verify:
+                    from athena.reliability import record_verdict
+                    from athena.verifier import verify_report
+
+                    verdict = verify_report(
+                        prompt,
+                        result.output,
+                        working_directory=working_directory,
+                        executor_provider=provider_id,
+                    )
+                    record_verdict(
+                        provider_id,
+                        verdict,
+                        task_excerpt=prompt,
+                        project=working_directory or "",
+                    )
+                    result.verdict = verdict.to_dict()
+                    if verdict.verdadeiro is False:
+                        # Relatório mentiroso conta como falha → failover.
+                        last_error = (
+                            f"Relatório FALSO ({verdict.verificador}): "
+                            f"{'; '.join(verdict.motivos[:2]) or 'inconsistente'}"
+                        )
+                        result.warnings.append(
+                            f"Relatório de '{provider_id}' marcado FALSO pelo verificador "
+                            f"{verdict.verificador}; tentando próximo provider do combo."
+                        )
+                        break  # Vai para próximo provider
+                    if verdict.verdadeiro is None:
+                        result.warnings.append(
+                            "Verificação indisponível — relatório aceito sem checagem."
+                        )
                 result.duration_s = time.monotonic() - start_time
                 return result
 
