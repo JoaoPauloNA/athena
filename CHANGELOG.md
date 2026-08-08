@@ -3,6 +3,11 @@
 All notable changes to this project will be documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Deterministic verifier** (`athena/dverify.py`): model-free verification layer that re-runs the exact test/lint commands a report claims passed (whitelist only, no shell, per-command timeout) and compares real exit codes, plus checks that files claimed as created actually exist. Conclusive results short-circuit the advisory (model-based) verifier; `ATHENA_VERIFY_MODE=auto|deterministic|advisory` controls the pipeline. 11 new tests (45 total).
+
 ## [0.1.0] - 2026-08-07
 
 ### Added

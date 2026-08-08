@@ -22,7 +22,7 @@ actually be confirmed).
 | Layer | How it works | Role |
 |---|---|---|
 | **Advisory verifier** (implemented) | A cheap model (free tier first, e.g. opencode free) reads the executor's report plus project evidence and returns true/false. Anti-collusion: the verifier is never the same provider as the executor. FALSE → back for correction; FALSE twice → escalates to the orchestrator/human. | Triage. Never blocks alone, never produces a public number. |
-| **Deterministic verifier** (roadmap) | Re-runs exactly what the report claims (test suite, lint), compares real exit codes and the real `git diff` against the declared scope. **No model anywhere in the chain** — AI judging AI would destroy the credibility of the number. | The layer that produces trustworthy `claimed vs verified` metrics. |
+| **Deterministic verifier** (implemented) | Re-runs exactly what the report claims (whitelisted test/lint commands, no shell, per-command timeout), compares real exit codes, and checks that files claimed as created actually exist. **No model anywhere in the chain** — AI judging AI would destroy the credibility of the number. | The layer that produces trustworthy `claimed vs verified` metrics. Short-circuits the advisory layer when conclusive. Controlled by `ATHENA_VERIFY_MODE=auto|deterministic|advisory`. |
 
 The advisory layer stays useful even after deterministic checks land: many
 tasks have no automatable oracle (prose, configuration, exploration), and

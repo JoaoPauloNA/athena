@@ -189,7 +189,35 @@ def verify_report(
     working_directory: str | None = None,
     executor_provider: str = "",
 ) -> Verdict:
-    """Verifica um relatório. Retorna Verdict (verdadeiro=None se não deu pra verificar)."""
+    """Verifica um relatório. Retorna Verdict (verdadeiro=None se não deu pra verificar).
+
+    Camadas, em ordem:
+    1. DETERMINÍSTICA (sem modelo): re-roda testes/lint alegados e checa
+       arquivos citados. Se for conclusiva, o veredito dela é final.
+    2. ADVISORY (modelo barato): triagem para o que não tem oráculo
+       automatizável. ATHENA_VERIFY_MODE=advisory|deterministic|auto.
+    """
+    wd = working_directory or os.getcwd()
+    mode = os.environ.get("ATHENA_VERIFY_MODE", "auto").lower()
+
+    from athena.dverify import deterministic_verify
+
+    det = deterministic_verify(report, wd)
+    if det.verdadeiro is not None:
+        return Verdict(
+            verdadeiro=det.verdadeiro,
+            confianca="alta",
+            motivos=det.motivos,
+            evidencias=json.dumps(det.to_dict(), ensure_ascii=False),
+            verificador="deterministic",
+        )
+    if mode == "deterministic":
+        return Verdict(
+            verdadeiro=None,
+            motivos=["Nenhuma alegação verificável deterministicamente no relatório."],
+            verificador="deterministic",
+        )
+
     chosen = pick_verifier(executor_provider)
     if not chosen:
         return Verdict(verdadeiro=None, motivos=["Nenhum verificador disponível."])
