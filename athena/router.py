@@ -2,26 +2,24 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional
 
 from athena.bridge import RunResult
-from athena.combos import Combo, ComboStep, get_combo
+from athena.combos import get_combo
 from athena.providers import ask_provider
 
 
 class AllProvidersFailed(Exception):
     """Todos os providers do combo falharam."""
-    pass
 
 
 def run_combo(
     combo_id: str,
     prompt: str,
     *,
-    working_directory: Optional[str] = None,
-    timeout: Optional[int] = None,
+    working_directory: str | None = None,
+    timeout: int | None = None,
     heavy_model_authorized: bool = False,
-    task_type: Optional[str] = None,
+    task_type: str | None = None,
 ) -> RunResult:
     """Executa um prompt através de um combo, com failover automático.
 
@@ -37,8 +35,8 @@ def run_combo(
         raise ValueError(f"Combo '{combo_id}' não tem providers configurados")
 
     start_time = time.monotonic()
-    last_error: Optional[str] = None
-    attempted: List[str] = []
+    last_error: str | None = None
+    attempted: list[str] = []
 
     for step in combo.chain:
         provider_id = step.provider_id
@@ -88,16 +86,16 @@ def run_combo(
                 time.sleep(combo.failover_policy.retry_delay_seconds)
 
     # Todos os providers falharam
-    total_duration = time.monotonic() - start_time
     error_msg = (
         f"Combo '{combo_id}' esgotou todos os {len(combo.chain)} providers. "
         f"Tentados: {', '.join(attempted)}. "
-        f"Último erro: {last_error or 'desconhecido'}."
+        f"Último erro: {last_error or 'desconhecido'} "
+        f"(duração total: {time.monotonic() - start_time:.1f}s)."
     )
     raise AllProvidersFailed(error_msg)
 
 
-def test_combo(combo_id: str) -> List[dict]:
+def test_combo(combo_id: str) -> list[dict]:
     """Testa um combo pingando cada provider com um prompt mínimo.
 
     Retorna lista de resultados por provider (sem lançar exceção).

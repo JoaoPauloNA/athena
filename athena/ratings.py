@@ -25,14 +25,13 @@ import json
 import os
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
 
 from athena.config import DATA_DIR
 
 RATINGS_FILE = DATA_DIR / "model_ratings.json"
 RATINGS_TTL_DAYS = float(os.environ.get("ATHENA_RATINGS_TTL_DAYS", "7"))
 
-ROLE_LABELS: Dict[str, str] = {
+ROLE_LABELS: dict[str, str] = {
     "frontend": "Frontend / UI",
     "backend": "Backend / Agentic",
     "raciocinio": "Raciocínio",
@@ -41,7 +40,7 @@ ROLE_LABELS: Dict[str, str] = {
 
 # --- Seed (pesquisa de jul/ago 2026; a Automation sobrescreve com dados novos) ---
 
-RATINGS_SEED: List[dict] = [
+RATINGS_SEED: list[dict] = [
     {
         "match": ["gpt-5.6", "gpt-5.5"],
         "name": "GPT-5.6 Sol",
@@ -148,7 +147,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _parse_iso(value: str) -> Optional[float]:
+def _parse_iso(value: str) -> float | None:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
     except (TypeError, ValueError):
@@ -210,7 +209,7 @@ def _match_score(entry: dict, model_id: str, model_name: str) -> int:
     return best
 
 
-def ratings_for_model(model_id: str, model_name: str = "") -> Optional[dict]:
+def ratings_for_model(model_id: str, model_name: str = "") -> dict | None:
     """Retorna a entrada da tabela que melhor casa com o modelo, se houver."""
     data = load_ratings()
     best_entry, best_score = None, 0
@@ -221,7 +220,7 @@ def ratings_for_model(model_id: str, model_name: str = "") -> Optional[dict]:
     return best_entry
 
 
-def best_per_role(available_model_keys: Optional[List[str]] = None) -> Dict[str, List[dict]]:
+def best_per_role(available_model_keys: list[str] | None = None) -> dict[str, list[dict]]:
     """Melhores modelos por função, ordenados pela nota da função.
 
     Se `available_model_keys` for informado (ids/nomes de modelos de providers
@@ -229,13 +228,13 @@ def best_per_role(available_model_keys: Optional[List[str]] = None) -> Dict[str,
     `installed: False`.
     """
     data = load_ratings()
-    roles: Dict[str, List[dict]] = {role: [] for role in ROLE_LABELS}
+    roles: dict[str, list[dict]] = {role: [] for role in ROLE_LABELS}
     for entry in data.get("models", []):
         hay_available = True
         if available_model_keys is not None:
             hay = " ".join(available_model_keys).lower()
             hay_available = any(n.lower() in hay for n in entry.get("match", []))
-        for role, label in ROLE_LABELS.items():
+        for role in ROLE_LABELS:
             score = (entry.get("scores") or {}).get(role, 0)
             roles[role].append({
                 "name": entry.get("name"),
@@ -250,7 +249,7 @@ def best_per_role(available_model_keys: Optional[List[str]] = None) -> Dict[str,
     return roles
 
 
-def get_ratings_payload(installed_keys: Optional[List[str]] = None) -> dict:
+def get_ratings_payload(installed_keys: list[str] | None = None) -> dict:
     """Payload completo para a API / dashboard."""
     data = load_ratings()
     return {

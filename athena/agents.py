@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
 
-ROLE_IDS: Tuple[str, ...] = (
+ROLE_IDS: tuple[str, ...] = (
     "arquiteto",
     "seguranca",
     "revisor",
@@ -19,7 +19,7 @@ class AgentRole:
     id: str
     name: str
     description: str
-    expertise: Tuple[str, ...]
+    expertise: tuple[str, ...]
     prompt_template: str
 
     def to_dict(self) -> dict:
@@ -31,7 +31,7 @@ class AgentRole:
         }
 
 
-ROLES: Dict[str, AgentRole] = {
+ROLES: dict[str, AgentRole] = {
     "arquiteto": AgentRole(
         id="arquiteto",
         name="Arquiteto",
@@ -154,7 +154,7 @@ ROLES: Dict[str, AgentRole] = {
 }
 
 # Papel padrão de cada CLI no Athena.
-DEFAULT_PROVIDER_ROLES: Dict[str, str] = {
+DEFAULT_PROVIDER_ROLES: dict[str, str] = {
     "claude": "arquiteto",
     "codex": "implementador",
     "agent": "revisor",
@@ -163,20 +163,20 @@ DEFAULT_PROVIDER_ROLES: Dict[str, str] = {
 }
 
 # Composição sugerida para deliberação com papéis distintos.
-DEFAULT_COUNCIL_ROLES: Tuple[str, ...] = ("arquiteto", "implementador", "revisor")
+DEFAULT_COUNCIL_ROLES: tuple[str, ...] = ("arquiteto", "implementador", "revisor")
 
 
-def list_roles() -> List[dict]:
+def list_roles() -> list[dict]:
     return [ROLES[role_id].to_dict() for role_id in ROLE_IDS]
 
 
-def get_role(role_id: Optional[str]) -> Optional[AgentRole]:
+def get_role(role_id: str | None) -> AgentRole | None:
     if role_id is None:
         return None
     return ROLES.get(role_id)
 
 
-def apply_role(role_id: Optional[str], prompt: str) -> str:
+def apply_role(role_id: str | None, prompt: str) -> str:
     role = get_role(role_id)
     if role is None:
         return prompt
@@ -185,11 +185,11 @@ def apply_role(role_id: Optional[str], prompt: str) -> str:
 
 def resolve_roles_for_providers(
     provider_ids: Sequence[str],
-    roles: Optional[Sequence[Optional[str]]] = None,
+    roles: Sequence[str | None] | None = None,
     *,
     use_default_roles: bool = True,
-) -> List[Optional[str]]:
-    resolved: List[Optional[str]] = []
+) -> list[str | None]:
+    resolved: list[str | None] = []
     for index, provider_id in enumerate(provider_ids):
         if roles is not None and index < len(roles):
             resolved.append(roles[index])

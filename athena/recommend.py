@@ -8,7 +8,6 @@ providers INSTALADOS na máquina e devolve quem chamar, com modelo e motivo.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional
 
 from athena.ratings import ROLE_LABELS, load_ratings
 
@@ -48,7 +47,7 @@ _WEIGHT_ORDER = {"light": 0, "medium": 1, "heavy": 2}
 
 
 # Palavras-chave que mapeiam a descrição da tarefa para cada função
-_TASK_KEYWORDS: Dict[str, List[str]] = {
+_TASK_KEYWORDS: dict[str, list[str]] = {
     "frontend": [
         "frontend", "front-end", "ui", "ux", "interface", "tela", "layout",
         "css", "tailwind", "componente", "react", "vue", "design", "landing",
@@ -75,12 +74,12 @@ _TASK_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def classify_task(task_description: str, task_type: Optional[str] = None) -> Dict[str, float]:
+def classify_task(task_description: str, task_type: str | None = None) -> dict[str, float]:
     """Pontua cada função para a tarefa (0-1). task_type explícito tem prioridade."""
     if task_type and task_type in ROLE_LABELS:
         return {task_type: 1.0}
     text = (task_description or "").lower()
-    scores: Dict[str, float] = {}
+    scores: dict[str, float] = {}
     for role, keywords in _TASK_KEYWORDS.items():
         hits = sum(1 for kw in keywords if _keyword_hit(text, kw))
         if hits:
@@ -91,11 +90,11 @@ def classify_task(task_description: str, task_type: Optional[str] = None) -> Dic
     return scores
 
 
-def _providers_by_model() -> Dict[str, List[dict]]:
+def _providers_by_model() -> dict[str, list[dict]]:
     """Mapa needle → providers instalados cujos catálogos contêm o modelo."""
     from athena.providers import list_providers
 
-    mapping: Dict[str, List[dict]] = {}
+    mapping: dict[str, list[dict]] = {}
     for p in list_providers():
         if not p.get("available"):
             continue
@@ -114,7 +113,7 @@ def _providers_by_model() -> Dict[str, List[dict]]:
 def recommend_for_task(
     task_description: str,
     *,
-    task_type: Optional[str] = None,
+    task_type: str | None = None,
     top_n: int = 3,
     only_installed: bool = True,
 ) -> dict:
@@ -127,8 +126,8 @@ def recommend_for_task(
     data = load_ratings()
     catalog = _providers_by_model()
 
-    suggestions: List[dict] = []
-    excluded_heavy: List[str] = []
+    suggestions: list[dict] = []
+    excluded_heavy: list[str] = []
     for entry in data.get("models", []):
         scores = entry.get("scores") or {}
         # nota ponderada pelas funções detectadas na tarefa
@@ -136,7 +135,7 @@ def recommend_for_task(
         weighted /= max(sum(role_scores.values()), 1e-9)
 
         # quais providers instalados têm esse modelo?
-        installed_in: List[dict] = []
+        installed_in: list[dict] = []
         for key, providers in catalog.items():
             if any(needle.lower() in key for needle in entry.get("match", [])):
                 installed_in.extend(providers)
@@ -195,7 +194,7 @@ def recommend_for_task(
     }
 
 
-def _build_tip(top: List[dict], role: str) -> str:
+def _build_tip(top: list[dict], role: str) -> str:
     if not top:
         return "Nenhum modelo da tabela disponível — instale um provider ou rode refresh_models."
     best = top[0]

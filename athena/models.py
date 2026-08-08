@@ -6,8 +6,6 @@ import re
 import threading
 import time
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from athena.bridge import which
 from athena.config import MODELS_CATALOG_FILE, MODELS_TTL_DAYS
@@ -16,7 +14,7 @@ _LOCK = threading.Lock()
 _SESSION_ENSURED = False
 
 # Fallback estático (IDs reais das CLIs) quando discovery falha / CLI offline.
-FALLBACK_CATALOG: Dict[str, List[Dict[str, str]]] = {
+FALLBACK_CATALOG: dict[str, list[dict[str, str]]] = {
     "agent": [
         {"id": "auto", "name": "Auto (default)", "weight": "light"},
         {"id": "composer-2.5", "name": "Composer 2.5", "weight": "light"},
@@ -61,7 +59,7 @@ FALLBACK_CATALOG: Dict[str, List[Dict[str, str]]] = {
     ],
 }
 
-FALLBACK_DEFAULTS: Dict[str, str] = {
+FALLBACK_DEFAULTS: dict[str, str] = {
     "agy": "gemini-3.6-flash-medium",
     "claude": "sonnet",
     "codex": "gpt-5.5",
@@ -69,14 +67,14 @@ FALLBACK_DEFAULTS: Dict[str, str] = {
 }
 
 _AGENT_LINE = re.compile(r"^([a-zA-Z0-9._\[\]=-]+)\s+-\s+(.+)$")
-_AGY_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$", re.I)
+_AGY_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$", re.IGNORECASE)
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _parse_iso(value: str) -> Optional[float]:
+def _parse_iso(value: str) -> float | None:
     try:
         normalized = value.replace("Z", "+00:00")
         return datetime.fromisoformat(normalized).timestamp()
@@ -102,7 +100,7 @@ def classify_weight(model_id: str, display_name: str = "") -> str:
     return "medium"
 
 
-def _pick_recommended(provider_id: str, models: List[Dict[str, str]]) -> Optional[str]:
+def _pick_recommended(provider_id: str, models: list[dict[str, str]]) -> str | None:
     if not models:
         return FALLBACK_DEFAULTS.get(provider_id)
     if provider_id == "agent":
@@ -136,7 +134,7 @@ def _pick_recommended(provider_id: str, models: List[Dict[str, str]]) -> Optiona
     return models[0]["id"]
 
 
-def _run_cli(argv: List[str], *, timeout: int = 20) -> Tuple[int, str]:
+def _run_cli(argv: list[str], *, timeout: int = 20) -> tuple[int, str]:
     import subprocess
 
     try:
@@ -154,11 +152,11 @@ def _run_cli(argv: List[str], *, timeout: int = 20) -> Tuple[int, str]:
         return 1, str(exc)
 
 
-def _discover_agent(binary: str) -> List[Dict[str, str]]:
+def _discover_agent(binary: str) -> list[dict[str, str]]:
     code, out = _run_cli([binary, "--list-models"])
     if code != 0 and "Available models" not in out:
         code, out = _run_cli([binary, "models"])
-    models: List[Dict[str, str]] = []
+    models: list[dict[str, str]] = []
     for line in out.splitlines():
         line = line.strip()
         if not line or line.lower().startswith("available models"):
@@ -171,9 +169,9 @@ def _discover_agent(binary: str) -> List[Dict[str, str]]:
     return models
 
 
-def _discover_agy(binary: str) -> List[Dict[str, str]]:
+def _discover_agy(binary: str) -> list[dict[str, str]]:
     code, out = _run_cli([binary, "models"])
-    models: List[Dict[str, str]] = []
+    models: list[dict[str, str]] = []
     for line in out.splitlines():
         token = line.strip()
         if not token or not _AGY_ID.match(token):
@@ -185,22 +183,22 @@ def _discover_agy(binary: str) -> List[Dict[str, str]]:
     return models
 
 
-def _discover_codex(_binary: str) -> List[Dict[str, str]]:
+def _discover_codex(_binary: str) -> list[dict[str, str]]:
     return [dict(m) for m in FALLBACK_CATALOG["codex"]]
 
 
-def _discover_claude(_binary: str) -> List[Dict[str, str]]:
+def _discover_claude(_binary: str) -> list[dict[str, str]]:
     return [dict(m) for m in FALLBACK_CATALOG["claude"]]
 
 
-def _discover_openclaude(_binary: str) -> List[Dict[str, str]]:
+def _discover_openclaude(_binary: str) -> list[dict[str, str]]:
     return [dict(m) for m in FALLBACK_CATALOG["openclaude"]]
 
 
-def _discover_opencode(binary: str) -> List[Dict[str, str]]:
+def _discover_opencode(binary: str) -> list[dict[str, str]]:
     """`opencode models` lista um id por linha (provider/modelo); os *-free são gratuitos."""
     code, out = _run_cli([binary, "models"], timeout=30)
-    models: List[Dict[str, str]] = []
+    models: list[dict[str, str]] = []
     for line in out.splitlines():
         token = line.strip()
         if not token or " " in token or "/" not in token:
@@ -235,7 +233,7 @@ def _save_cache(data: dict) -> None:
     MODELS_CATALOG_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def cache_is_stale(data: Optional[dict] = None) -> bool:
+def cache_is_stale(data: dict | None = None) -> bool:
     payload = data if data is not None else _load_cache()
     updated = _parse_iso(payload.get("updated_at", ""))
     if updated is None:
@@ -252,7 +250,7 @@ def refresh_model_catalog(*, force: bool = False) -> dict:
         if not force and current and not cache_is_stale(current):
             return current
 
-        providers: Dict[str, dict] = {}
+        providers: dict[str, dict] = {}
         for provider_id, discover in _DISCOVERERS.items():
             binary = None
             if provider_id == "agent":
@@ -260,7 +258,7 @@ def refresh_model_catalog(*, force: bool = False) -> dict:
             else:
                 binary = which(provider_id)
 
-            models: List[Dict[str, str]] = []
+            models: list[dict[str, str]] = []
             source = "fallback"
             if binary:
                 try:
@@ -302,7 +300,7 @@ def ensure_models_fresh(*, force_session: bool = False) -> dict:
     return data
 
 
-def get_provider_models(provider_id: str) -> List[Dict[str, str]]:
+def get_provider_models(provider_id: str) -> list[dict[str, str]]:
     data = ensure_models_fresh()
     entry = (data.get("providers") or {}).get(provider_id) or {}
     models = entry.get("models")
@@ -311,7 +309,7 @@ def get_provider_models(provider_id: str) -> List[Dict[str, str]]:
     return [dict(m) for m in FALLBACK_CATALOG.get(provider_id, [])]
 
 
-def get_recommended_default_model(provider_id: str) -> Optional[str]:
+def get_recommended_default_model(provider_id: str) -> str | None:
     data = ensure_models_fresh()
     entry = (data.get("providers") or {}).get(provider_id) or {}
     recommended = entry.get("recommended_default_model")
@@ -330,7 +328,7 @@ def catalog_meta() -> dict:
     }
 
 
-def is_heavy_model(provider_id: str, model: Optional[str]) -> bool:
+def is_heavy_model(provider_id: str, model: str | None) -> bool:
     if not model:
         return False
     key = model.strip().lower()
@@ -350,10 +348,10 @@ def model_in_catalog(provider_id: str, model: str) -> bool:
     return False
 
 
-def resolve_model(provider_id: str, model: Optional[str]) -> Optional[str]:
+def resolve_model(provider_id: str, model: str | None) -> str | None:
     recommended = get_recommended_default_model(provider_id)
 
-    def _to_id(value: str) -> Optional[str]:
+    def _to_id(value: str) -> str | None:
         key = value.strip().lower()
         for entry in get_provider_models(provider_id):
             if entry.get("id", "").lower() == key:
@@ -373,8 +371,8 @@ def resolve_model(provider_id: str, model: Optional[str]) -> Optional[str]:
     return chosen
 
 
-def legacy_catalog_for_provider(provider_id: str) -> List[Dict[str, str]]:
-    from athena.ratings import ratings_for_model, ROLE_LABELS
+def legacy_catalog_for_provider(provider_id: str) -> list[dict[str, str]]:
+    from athena.ratings import ROLE_LABELS, ratings_for_model
 
     out = []
     for entry in get_provider_models(provider_id):

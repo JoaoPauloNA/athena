@@ -19,10 +19,10 @@ def main() -> None:
     dashboard_parser.add_argument("--port", type=int, default=20128, help="Porta do dashboard")
 
     # mcp
-    mcp_parser = subparsers.add_parser("mcp", help="Inicia o servidor MCP (stdio)")
+    subparsers.add_parser("mcp", help="Inicia o servidor MCP (stdio)")
 
     # test
-    test_parser = subparsers.add_parser("test", help="Testa providers disponíveis")
+    subparsers.add_parser("test", help="Testa providers disponíveis")
 
     args = parser.parse_args()
 
@@ -40,8 +40,8 @@ def main() -> None:
 
 
 def _run_test() -> None:
-    from athena.providers import list_providers
     from athena.combos import ensure_default_combo
+    from athena.providers import list_providers
     from athena.router import test_combo
 
     print("=" * 50)

@@ -5,27 +5,33 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
 
-from athena.agents import DEFAULT_PROVIDER_ROLES, apply_role, get_role, resolve_roles_for_providers
-from athena.bridge import RunResult, run_subprocess, run_with_pty, which, _enriched_env
+from athena.agents import (
+    DEFAULT_PROVIDER_ROLES,
+    apply_role,
+    get_role,
+    resolve_roles_for_providers,
+)
+from athena.bridge import RunResult, _enriched_env, run_subprocess, run_with_pty, which
 from athena.contract import apply_contract, check_report_format
 from athena.models import (
     catalog_meta,
     get_recommended_default_model,
-    is_heavy_model as catalog_is_heavy,
     legacy_catalog_for_provider,
     model_in_catalog,
     resolve_model,
+)
+from athena.models import (
+    is_heavy_model as catalog_is_heavy,
 )
 from athena.selfdetect import detect_self_provider
 from athena.ssh import build_ssh_command
 from athena.usage import record_usage
 
-DEFAULT_COUNCIL: Tuple[str, ...] = ("codex", "agent", "claude")
+DEFAULT_COUNCIL: tuple[str, ...] = ("codex", "agent", "claude")
 
 # --- Scanner Inteligente de CLIs no PATH ---------------------------------
 
@@ -86,7 +92,7 @@ def _probe_cli(binary_path: str) -> bool:
     contém palavras-chave de IA. Retorna True se parece ser CLI de IA.
     No Windows, shims .cmd/.bat (npm CLIs) precisam do cmd.exe.
     """
-    def _run_probe(args: List[str]) -> subprocess.CompletedProcess:
+    def _run_probe(args: list[str]) -> subprocess.CompletedProcess:
         if sys.platform == "win32" and str(args[0]).lower().endswith((".cmd", ".bat")):
             args = ["cmd", "/c"] + args
         return subprocess.run(args, capture_output=True, text=True, timeout=3)
@@ -110,7 +116,7 @@ def _probe_cli(binary_path: str) -> bool:
     return score >= 3  # Pelo menos 3 palavras-chave para confirmar
 
 
-def _get_all_binaries_in_path() -> List[str]:
+def _get_all_binaries_in_path() -> list[str]:
     """Retorna todos os nomes de binários únicos no PATH enriquecido
     (PATH do processo + diretórios comuns por OS: ~/.local/bin, Homebrew,
     npm global, Scoop, cargo etc.). No Windows, deduplica por nome base
@@ -134,13 +140,13 @@ def _get_all_binaries_in_path() -> List[str]:
     return binaries
 
 
-def scan_path_for_clis() -> Dict[str, ProviderSpec]:
+def scan_path_for_clis() -> dict[str, ProviderSpec]:
     """
     Escaneia o PATH procurando por CLIs de IA.
     Primeiro filtra por nome (heurística), depois confirma com --help/--version.
     Retorna um dict de provider_id → ProviderSpec.
     """
-    found: Dict[str, ProviderSpec] = {}
+    found: dict[str, ProviderSpec] = {}
     all_binaries = _get_all_binaries_in_path()
 
     def _base_name(name: str) -> str:
@@ -176,7 +182,7 @@ def scan_path_for_clis() -> Dict[str, ProviderSpec]:
 
 # --- Custom providers (override/manual) ---------------------------------
 
-def load_custom_providers() -> Dict[str, ProviderSpec]:
+def load_custom_providers() -> dict[str, ProviderSpec]:
     """
     Carrega providers customizados do arquivo ~/.athena/custom_providers.json.
     Formato: [{"id": "...", "name": "...", "binary": "...", "description": "...", "default_timeout": 300}]
@@ -184,7 +190,7 @@ def load_custom_providers() -> Dict[str, ProviderSpec]:
     """
     from athena.config import DATA_DIR
     custom_file = DATA_DIR / "custom_providers.json"
-    found: Dict[str, ProviderSpec] = {}
+    found: dict[str, ProviderSpec] = {}
     if not custom_file.exists():
         return found
     try:
@@ -213,13 +219,13 @@ class ProviderSpec:
     name: str
     binary: str
     description: str
-    binary_candidates: Tuple[str, ...] = ()
+    binary_candidates: tuple[str, ...] = ()
     requires_pty: bool = False
     default_timeout: int = 300
-    default_role: Optional[str] = None
+    default_role: str | None = None
 
 
-PROVIDERS: Dict[str, ProviderSpec] = {
+PROVIDERS: dict[str, ProviderSpec] = {
     "codex": ProviderSpec(
         id="codex",
         name="Codex",
@@ -408,22 +414,22 @@ if _ALL_DYNAMIC:
         if pid not in PROVIDERS:
             PROVIDERS[pid] = spec
 
-PROVIDER_IDS: Tuple[str, ...] = tuple(
+PROVIDER_IDS: tuple[str, ...] = tuple(
     list(PROVIDERS.keys())
     + [pid for pid in _ALL_DYNAMIC if pid not in PROVIDERS]
 )
 
 # agy é recomendado só para frontend — chamadas com task_type diferente vêm com aviso.
-PROVIDER_TASK_SCOPE: Dict[str, str] = {
+PROVIDER_TASK_SCOPE: dict[str, str] = {
     "agy": "frontend",
 }
 
 
-def is_heavy_model(provider_id: str, model: Optional[str]) -> bool:
+def is_heavy_model(provider_id: str, model: str | None) -> bool:
     return catalog_is_heavy(provider_id, model)
 
 
-def resolve_binary(spec: ProviderSpec) -> Optional[str]:
+def resolve_binary(spec: ProviderSpec) -> str | None:
     for candidate in spec.binary_candidates or (spec.binary,):
         path = which(candidate)
         if path:
@@ -431,7 +437,7 @@ def resolve_binary(spec: ProviderSpec) -> Optional[str]:
     return None
 
 
-def list_providers() -> List[dict]:
+def list_providers() -> list[dict]:
     items = []
     self_provider = detect_self_provider(PROVIDER_IDS)
     meta = catalog_meta()
@@ -464,15 +470,15 @@ def _build_command(
     prompt: str,
     *,
     binary: str,
-    model: Optional[str] = None,
-    working_directory: Optional[str] = None,
+    model: str | None = None,
+    working_directory: str | None = None,
     skip_permissions: bool = False,
-    extra_args: Optional[Sequence[str]] = None,
+    extra_args: Sequence[str] | None = None,
     prompt_via_stdin: bool = False,
-    timeout: Optional[int] = None,
-) -> List[str]:
+    timeout: int | None = None,
+) -> list[str]:
     extra = list(extra_args or [])
-    cmd: List[str] = [binary]
+    cmd: list[str] = [binary]
 
     if spec.id == "agent":
         cmd.extend(["-p", prompt])
@@ -557,16 +563,16 @@ def ask_provider(
     provider_id: str,
     prompt: str,
     *,
-    role: Optional[str] = None,
+    role: str | None = None,
     use_default_role: bool = True,
-    model: Optional[str] = None,
-    working_directory: Optional[str] = None,
-    timeout: Optional[int] = None,
+    model: str | None = None,
+    working_directory: str | None = None,
+    timeout: int | None = None,
     skip_permissions: bool = False,
-    extra_args: Optional[Sequence[str]] = None,
+    extra_args: Sequence[str] | None = None,
     heavy_model_authorized: bool = False,
-    task_type: Optional[str] = None,
-    ssh_host: Optional[str] = None,
+    task_type: str | None = None,
+    ssh_host: str | None = None,
     with_contract: bool = True,
 ) -> RunResult:
     spec = PROVIDERS.get(provider_id)
@@ -602,7 +608,7 @@ def ask_provider(
 
     requested_model = model
     effective_model = resolve_model(provider_id, model)
-    model_warning: Optional[str] = None
+    model_warning: str | None = None
     if (
         requested_model
         and effective_model != requested_model.strip()
@@ -739,8 +745,7 @@ def ask_provider_verified(
     if result.error or result.timed_out:
         return result  # nada a verificar: a execução já falhou
 
-    history: List[dict] = []
-    current_prompt = prompt
+    history: list[dict] = []
     for attempt in range(1, MAX_FIX_ATTEMPTS + 1):
         verdict = verify_report(
             prompt,
@@ -790,18 +795,18 @@ def ask_provider_smart(
     provider_id: str,
     prompt: str,
     *,
-    context_files: Optional[Sequence[str]] = None,
+    context_files: Sequence[str] | None = None,
     context_size_bytes: int = 0,
-    role: Optional[str] = None,
+    role: str | None = None,
     use_default_role: bool = True,
-    model: Optional[str] = None,
-    working_directory: Optional[str] = None,
-    timeout: Optional[int] = None,
+    model: str | None = None,
+    working_directory: str | None = None,
+    timeout: int | None = None,
     skip_permissions: bool = False,
-    extra_args: Optional[Sequence[str]] = None,
+    extra_args: Sequence[str] | None = None,
     heavy_model_authorized: bool = False,
-    task_type: Optional[str] = None,
-    ssh_host: Optional[str] = None,
+    task_type: str | None = None,
+    ssh_host: str | None = None,
 ) -> RunResult:
     return ask_provider(
         provider_id,
@@ -823,17 +828,17 @@ def deliberate(
     prompt: str,
     provider_ids: Sequence[str],
     *,
-    roles: Optional[Sequence[Optional[str]]] = None,
+    roles: Sequence[str | None] | None = None,
     use_default_roles: bool = True,
-    model: Optional[str] = None,
-    working_directory: Optional[str] = None,
-    timeout: Optional[int] = None,
+    model: str | None = None,
+    working_directory: str | None = None,
+    timeout: int | None = None,
     skip_permissions: bool = False,
-    extra_args: Optional[Sequence[str]] = None,
+    extra_args: Sequence[str] | None = None,
     heavy_model_authorized: bool = False,
-    task_type: Optional[str] = None,
-    ssh_host: Optional[str] = None,
-) -> List[RunResult]:
+    task_type: str | None = None,
+    ssh_host: str | None = None,
+) -> list[RunResult]:
     unique_ids = []
     for provider_id in provider_ids:
         if provider_id not in unique_ids:
@@ -845,7 +850,7 @@ def deliberate(
         use_default_roles=use_default_roles,
     )
 
-    results: List[RunResult] = []
+    results: list[RunResult] = []
     with ThreadPoolExecutor(max_workers=min(len(unique_ids), 4) or 1) as pool:
         futures = {
             pool.submit(

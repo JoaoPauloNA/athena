@@ -4,33 +4,39 @@ from __future__ import annotations
 import json
 import sys
 import traceback
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from athena import __version__
 from athena.combos import ensure_default_combo, list_combos
 from athena.models import ensure_models_fresh, refresh_model_catalog
-from athena.providers import ask_provider, ask_provider_verified, deliberate, list_providers
+from athena.providers import (
+    ask_provider,
+    ask_provider_verified,
+    deliberate,
+    list_providers,
+)
 from athena.router import run_combo
 from athena.usage import get_usage
 
-ToolHandler = Callable[[Dict[str, Any]], Any]
+ToolHandler = Callable[[dict[str, Any]], Any]
 
 
 def _text_content(payload: Any) -> dict:
     return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}]}
 
 
-def _handle_list_providers(_arguments: Dict[str, Any]) -> dict:
+def _handle_list_providers(_arguments: dict[str, Any]) -> dict:
     ensure_models_fresh()
     return _text_content({"providers": list_providers()})
 
 
-def _handle_list_combos(_arguments: Dict[str, Any]) -> dict:
+def _handle_list_combos(_arguments: dict[str, Any]) -> dict:
     ensure_default_combo()
     return _text_content({"combos": [c.to_dict() for c in list_combos()]})
 
 
-def _handle_run_combo(arguments: Dict[str, Any]) -> dict:
+def _handle_run_combo(arguments: dict[str, Any]) -> dict:
     combo_id = arguments.get("combo_id", "default")
     prompt = arguments["prompt"]
     result = run_combo(
@@ -46,7 +52,7 @@ def _handle_run_combo(arguments: Dict[str, Any]) -> dict:
     })
 
 
-def _handle_ask_provider(arguments: Dict[str, Any]) -> dict:
+def _handle_ask_provider(arguments: dict[str, Any]) -> dict:
     fn = ask_provider_verified if arguments.get("verify") else ask_provider
     result = fn(
         arguments["provider"],
@@ -59,7 +65,7 @@ def _handle_ask_provider(arguments: Dict[str, Any]) -> dict:
     return _text_content(result.to_dict())
 
 
-def _handle_deliberate(arguments: Dict[str, Any]) -> dict:
+def _handle_deliberate(arguments: dict[str, Any]) -> dict:
     results = deliberate(
         arguments["prompt"],
         arguments.get("providers", ["agent", "agy", "claude"]),
@@ -70,11 +76,11 @@ def _handle_deliberate(arguments: Dict[str, Any]) -> dict:
     })
 
 
-def _handle_list_usage(_arguments: Dict[str, Any]) -> dict:
+def _handle_list_usage(_arguments: dict[str, Any]) -> dict:
     return _text_content({"usage": get_usage()})
 
 
-def _handle_refresh_models(arguments: Dict[str, Any]) -> dict:
+def _handle_refresh_models(arguments: dict[str, Any]) -> dict:
     force = bool(arguments.get("force", True))
     payload = refresh_model_catalog(force=force)
     return _text_content({
@@ -83,7 +89,7 @@ def _handle_refresh_models(arguments: Dict[str, Any]) -> dict:
     })
 
 
-def _handle_recommend(arguments: Dict[str, Any]) -> dict:
+def _handle_recommend(arguments: dict[str, Any]) -> dict:
     from athena.recommend import recommend_for_task
     payload = recommend_for_task(
         arguments["task"],
@@ -94,7 +100,7 @@ def _handle_recommend(arguments: Dict[str, Any]) -> dict:
     return _text_content(payload)
 
 
-TOOLS: List[dict] = [
+TOOLS: list[dict] = [
     {
         "name": "list_providers",
         "description": "Lista CLIs registradas, disponibilidade no PATH e catálogo de modelos.",
@@ -177,7 +183,7 @@ TOOLS: List[dict] = [
     },
 ]
 
-TOOL_HANDLERS: Dict[str, ToolHandler] = {
+TOOL_HANDLERS: dict[str, ToolHandler] = {
     "list_providers": _handle_list_providers,
     "list_combos": _handle_list_combos,
     "run_combo": _handle_run_combo,
@@ -193,7 +199,7 @@ def _log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def _error_response(request_id: Optional[Any], code: int, message: str) -> dict:
+def _error_response(request_id: Any | None, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
@@ -201,7 +207,7 @@ def _success_response(request_id: Any, result: Any) -> dict:
     return {"jsonrpc": "2.0", "id": request_id, "result": result}
 
 
-def _handle_request(message: dict) -> Optional[dict]:
+def _handle_request(message: dict) -> dict | None:
     method = message.get("method")
     request_id = message.get("id")
     params = message.get("params") or {}

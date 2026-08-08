@@ -1,5 +1,11 @@
 # Athena-MCP 🔱
 
+[![CI](https://github.com/JoaoPauloNA/athena/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoPauloNA/athena/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 **OmniRouter for AI-agent CLIs — one MCP server to detect, route, verify and economize across every AI CLI on your machine.**
 
 🇧🇷 [Leia em Português](README.pt-BR.md) · 🇨🇳 [阅读中文](README.zh-CN.md)

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from athena.config import SELF_PROVIDER_ENV
 
 
-def detect_self_provider(provider_ids: "tuple[str, ...]") -> Optional[str]:
+def detect_self_provider(provider_ids: tuple[str, ...]) -> str | None:
     """Detecta qual provider é o próprio host orquestrador, se possível.
 
     Ordem de prioridade:

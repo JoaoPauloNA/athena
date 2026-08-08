@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # Contrato de execução aplicado a TODO prompt enviado a qualquer CLI (agent, claude, agy, codex).
 # Objetivo: o CLI executor carrega o peso da tarefa (ler contexto, decidir, agir, testar) e devolve

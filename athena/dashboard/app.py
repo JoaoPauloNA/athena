@@ -10,7 +10,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from athena import __version__
-from athena.combos import ComboStep, create_combo, delete_combo, ensure_default_combo, list_combos
+from athena.combos import (
+    ComboStep,
+    create_combo,
+    delete_combo,
+    ensure_default_combo,
+    list_combos,
+)
 from athena.config import DASHBOARD_HOST, DASHBOARD_PORT
 from athena.models import ensure_models_fresh
 from athena.providers import list_providers

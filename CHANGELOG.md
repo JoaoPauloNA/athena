@@ -1,0 +1,18 @@
+# Changelog
+
+All notable changes to this project will be documented here.
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [0.1.0] - 2026-08-07
+
+### Added
+- Cross-platform AI CLI scanner (macOS/Windows/Linux) with enriched PATH (`~/.local/bin`, Homebrew, Scoop, npm global, WinGet, Chocolatey, cargo, go, flatpak, snap)
+- Static catalog of 23 known AI CLIs (uninstalled ones shown as Offline) + heuristic auto-discovery
+- MCP server with 7 tools: `list_providers`, `ask_provider`, `run_combo`, `deliberate`, `recommend`, `refresh_models`, `list_usage`
+- **Lie detector** (`ask_provider` with `verify=true`): cheap-model verification of 10-topic reports against git evidence; fix loop; 2-strike escalation to the orchestrator
+- `recommend` tool: ratings × installed models × task complexity, with economy routing (heavy models excluded for simple tasks)
+- Model ratings table (0–10 per role: frontend/backend/reasoning/speed), cached in `~/.athena/model_ratings.json` and refreshed weekly from public leaderboards
+- Web dashboard (FastAPI + HTMX) with providers, models, combos, usage and Best-per-Role table
+- Failover combos with retries and per-step model/timeout
+- Trilingual documentation: English, Português (BR), 中文
+- Test suite (34 tests) and CI (ruff + pytest on Ubuntu/macOS/Windows × Python 3.10–3.12)

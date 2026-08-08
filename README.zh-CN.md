@@ -1,5 +1,10 @@
 # Athena-MCP 🔱
 
+[![CI](https://github.com/JoaoPauloNA/athena/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoPauloNA/athena/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 **AI 代理 CLI 的 OmniRouter —— 一个 MCP 服务器,统一检测、路由、验证并优化你机器上所有 AI CLI 的使用成本。**
 
 🇺🇸 [Read in English](README.md) · 🇧🇷 [Leia em Português](README.pt-BR.md)

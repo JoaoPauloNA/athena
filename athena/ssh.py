@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import shlex
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 
 def build_ssh_command(
     ssh_host: str,
     remote_argv: Sequence[str],
     *,
-    working_directory: Optional[str] = None,
+    working_directory: str | None = None,
     force_pty: bool = False,
-) -> List[str]:
+) -> list[str]:
     """Monta o comando `ssh` que executa `remote_argv` na máquina `ssh_host`.
 
     Cada token de `remote_argv` é escapado com `shlex.quote` e depois juntado numa única

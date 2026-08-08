@@ -39,3 +39,18 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["athena*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # linhas longas: strings de prompt/docs
+    "B008",   # chamadas em defaults de argumento (padrão FastAPI)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

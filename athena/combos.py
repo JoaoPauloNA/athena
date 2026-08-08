@@ -8,8 +8,6 @@ import json
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Dict, List, Optional
 
 from athena.config import COMBOS_FILE
 
@@ -19,11 +17,11 @@ _LOCK = threading.Lock()
 @dataclass
 class ComboStep:
     provider_id: str
-    model: Optional[str] = None
-    role: Optional[str] = None
-    timeout: Optional[int] = None
+    model: str | None = None
+    role: str | None = None
+    timeout: int | None = None
     skip_permissions: bool = False
-    extra_args: List[str] = field(default_factory=list)
+    extra_args: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d: dict = {"provider_id": self.provider_id}
@@ -40,7 +38,7 @@ class ComboStep:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ComboStep":
+    def from_dict(cls, data: dict) -> ComboStep:
         return cls(
             provider_id=data["provider_id"],
             model=data.get("model"),
@@ -69,7 +67,7 @@ class FailoverPolicy:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "FailoverPolicy":
+    def from_dict(cls, data: dict) -> FailoverPolicy:
         return cls(
             on_timeout=bool(data.get("on_timeout", True)),
             on_error=bool(data.get("on_error", True)),
@@ -87,7 +85,7 @@ class Combo:
     enabled: bool = True
     created_at: str = ""
     updated_at: str = ""
-    chain: List[ComboStep] = field(default_factory=list)
+    chain: list[ComboStep] = field(default_factory=list)
     failover_policy: FailoverPolicy = field(default_factory=FailoverPolicy)
 
     def to_dict(self) -> dict:
@@ -103,7 +101,7 @@ class Combo:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Combo":
+    def from_dict(cls, data: dict) -> Combo:
         return cls(
             id=data["id"],
             name=data["name"],
@@ -116,7 +114,7 @@ class Combo:
         )
 
 
-def _load_combos() -> Dict[str, Combo]:
+def _load_combos() -> dict[str, Combo]:
     if not COMBOS_FILE.exists():
         return {}
     try:
@@ -126,7 +124,7 @@ def _load_combos() -> Dict[str, Combo]:
         return {}
 
 
-def _save_combos(combos: Dict[str, Combo]) -> None:
+def _save_combos(combos: dict[str, Combo]) -> None:
     COMBOS_FILE.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": "1.0",
@@ -135,12 +133,12 @@ def _save_combos(combos: Dict[str, Combo]) -> None:
     COMBOS_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def list_combos() -> List[Combo]:
+def list_combos() -> list[Combo]:
     with _LOCK:
         return list(_load_combos().values())
 
 
-def get_combo(combo_id: str) -> Optional[Combo]:
+def get_combo(combo_id: str) -> Combo | None:
     with _LOCK:
         return _load_combos().get(combo_id)
 
@@ -148,10 +146,10 @@ def get_combo(combo_id: str) -> Optional[Combo]:
 def create_combo(
     combo_id: str,
     name: str,
-    chain: List[ComboStep],
+    chain: list[ComboStep],
     *,
     description: str = "",
-    failover_policy: Optional[FailoverPolicy] = None,
+    failover_policy: FailoverPolicy | None = None,
 ) -> Combo:
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     combo = Combo(
@@ -171,7 +169,7 @@ def create_combo(
     return combo
 
 
-def update_combo(combo_id: str, **kwargs) -> Optional[Combo]:
+def update_combo(combo_id: str, **kwargs) -> Combo | None:
     with _LOCK:
         combos = _load_combos()
         combo = combos.get(combo_id)

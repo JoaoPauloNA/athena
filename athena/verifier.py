@@ -20,10 +20,9 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 # Cadeia estática de fallback (usada só se a seleção dinâmica falhar).
-VERIFIER_CHAIN: List[tuple] = [
+VERIFIER_CHAIN: list[tuple] = [
     ("opencode", "opencode/deepseek-v4-flash-free"),
     ("opencode", "opencode/nemotron-3-ultra-free"),
     ("opencode", "opencode/ling-3.0-flash-free"),
@@ -35,14 +34,14 @@ VERIFIER_CHAIN: List[tuple] = [
 
 MAX_FIX_ATTEMPTS = 2  # FALSO 2x → escala para o orquestrador
 
-_FILES_CLAIMED_RE = re.compile(r"[\w./-]+\.(?:py|js|ts|tsx|jsx|json|md|html|css|sql|yaml|yml|toml|txt)", re.I)
+_FILES_CLAIMED_RE = re.compile(r"[\w./-]+\.(?:py|js|ts|tsx|jsx|json|md|html|css|sql|yaml|yml|toml|txt)", re.IGNORECASE)
 
 
 @dataclass
 class Verdict:
-    verdadeiro: Optional[bool]           # None = verificação indisponível
+    verdadeiro: bool | None           # None = verificação indisponível
     confianca: str = "baixa"
-    motivos: List[str] = field(default_factory=list)
+    motivos: list[str] = field(default_factory=list)
     evidencias: str = ""
     verificador: str = ""                # provider/modelo que verificou
     tentativas: int = 1
@@ -59,9 +58,9 @@ class Verdict:
         }
 
 
-def collect_evidence(working_directory: Optional[str], report: str) -> str:
+def collect_evidence(working_directory: str | None, report: str) -> str:
     """Coleta evidências OBJETIVAS do projeto (sem rodar nada destrutivo)."""
-    parts: List[str] = []
+    parts: list[str] = []
     wd = working_directory or os.getcwd()
 
     # git rev-parse sobe a árvore até achar o repo (wd pode ser um subdiretório)
@@ -126,9 +125,9 @@ Responda EXCLUSIVAMENTE com um JSON neste formato, sem markdown:
 {{"verdadeiro": true/false, "confianca": "alta|media|baixa", "motivos": ["..."]}}"""
 
 
-def _parse_verdict(output: str) -> Optional[dict]:
+def _parse_verdict(output: str) -> dict | None:
     """Extrai o JSON do veredito mesmo com texto em volta."""
-    match = re.search(r"\{[^{}]*\"verdadeiro\"[^{}]*\}", output or "", re.S)
+    match = re.search(r"\{[^{}]*\"verdadeiro\"[^{}]*\}", output or "", re.DOTALL)
     if not match:
         return None
     try:
@@ -140,7 +139,7 @@ def _parse_verdict(output: str) -> Optional[dict]:
     return None
 
 
-def pick_verifier(executor_provider: str) -> Optional[tuple]:
+def pick_verifier(executor_provider: str) -> tuple | None:
     """Escolhe AUTONOMAMENTE o melhor verificador disponível na máquina.
 
     Regras, em ordem:
@@ -152,7 +151,7 @@ def pick_verifier(executor_provider: str) -> Optional[tuple]:
     from athena.providers import PROVIDERS, list_providers, resolve_binary
     from athena.ratings import ratings_for_model
 
-    candidates: List[tuple] = []  # (free, rapidez, provider_id, model_id)
+    candidates: list[tuple] = []  # (free, rapidez, provider_id, model_id)
     for p in list_providers():
         pid = p["id"]
         if pid == executor_provider or not p.get("available"):
@@ -187,7 +186,7 @@ def verify_report(
     task_prompt: str,
     report: str,
     *,
-    working_directory: Optional[str] = None,
+    working_directory: str | None = None,
     executor_provider: str = "",
 ) -> Verdict:
     """Verifica um relatório. Retorna Verdict (verdadeiro=None se não deu pra verificar)."""

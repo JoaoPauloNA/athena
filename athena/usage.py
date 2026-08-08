@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import threading
 import time
-from typing import Dict
 
 from athena.config import USAGE_FILE
 
@@ -13,7 +12,7 @@ _LOCK = threading.Lock()
 _CHARS_PER_TOKEN = 4
 
 
-def _load() -> Dict[str, dict]:
+def _load() -> dict[str, dict]:
     if not USAGE_FILE.exists():
         return {}
     try:
@@ -22,7 +21,7 @@ def _load() -> Dict[str, dict]:
         return {}
 
 
-def _save(data: Dict[str, dict]) -> None:
+def _save(data: dict[str, dict]) -> None:
     USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
     USAGE_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
@@ -42,6 +41,6 @@ def record_usage(provider_id: str, *, prompt_chars: int, output_chars: int, dura
         _save(data)
 
 
-def get_usage() -> Dict[str, dict]:
+def get_usage() -> dict[str, dict]:
     with _LOCK:
         return _load()

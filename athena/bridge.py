@@ -6,8 +6,8 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
 
 HAS_PTY = sys.platform != "win32"
 if HAS_PTY:
@@ -47,7 +47,7 @@ def clean_cli_output(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _enriched_env(extra: Optional[dict] = None) -> dict:
+def _enriched_env(extra: dict | None = None) -> dict:
     """Prefixa diretórios comuns de CLIs no PATH (hosts GUI costumam ter PATH mínimo).
 
     Cross-platform:
@@ -123,17 +123,17 @@ def _enriched_env(extra: Optional[dict] = None) -> dict:
 @dataclass
 class RunResult:
     provider: str
-    command: List[str]
+    command: list[str]
     output: str
     exit_code: int
     timed_out: bool = False
-    error: Optional[str] = None
-    role: Optional[str] = None
-    report_format_ok: Optional[bool] = None
+    error: str | None = None
+    role: str | None = None
+    report_format_ok: bool | None = None
     duration_s: float = 0.0
-    warnings: List[str] = field(default_factory=list)
-    telemetry: Optional[dict] = None
-    verdict: Optional[dict] = None  # veredito do verificador, se verify=true
+    warnings: list[str] = field(default_factory=list)
+    telemetry: dict | None = None
+    verdict: dict | None = None  # veredito do verificador, se verify=true
 
     def to_dict(self) -> dict:
         payload = {
@@ -157,7 +157,7 @@ class RunResult:
         return payload
 
 
-def which(binary: str) -> Optional[str]:
+def which(binary: str) -> str | None:
     """Localiza um binário usando o PATH enriquecido (inclui ~/.local/bin,
     Homebrew etc.), não apenas o PATH cru do processo — hosts GUI costumam
     ter PATH mínimo e esconder CLIs instaladas."""
@@ -171,10 +171,10 @@ def run_subprocess(
     provider: str,
     command: Sequence[str],
     *,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
     timeout: int = 300,
-    env: Optional[dict] = None,
-    input_text: Optional[str] = None,
+    env: dict | None = None,
+    input_text: str | None = None,
 ) -> RunResult:
     cmd = list(command)
     if sys.platform == "win32" and cmd and str(cmd[0]).lower().endswith((".cmd", ".bat")):
@@ -246,9 +246,9 @@ def run_with_pty(
     provider: str,
     command: Sequence[str],
     *,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
     timeout: int = 300,
-    env: Optional[dict] = None,
+    env: dict | None = None,
 ) -> RunResult:
     """Executa CLI que exige TTY (ex.: agy -p) via pseudo-terminal."""
     if not HAS_PTY:
@@ -258,9 +258,9 @@ def run_with_pty(
     merged_env = _enriched_env(env)
     merged_env.setdefault("TERM", "dumb")
 
-    master_fd: Optional[int] = None
-    slave_fd: Optional[int] = None
-    proc: Optional[subprocess.Popen] = None
+    master_fd: int | None = None
+    slave_fd: int | None = None
+    proc: subprocess.Popen | None = None
     start = time.monotonic()
 
     try:
@@ -277,7 +277,7 @@ def run_with_pty(
         os.close(slave_fd)
         slave_fd = None
 
-        chunks: List[bytes] = []
+        chunks: list[bytes] = []
         deadline = time.monotonic() + timeout
 
         while True:
