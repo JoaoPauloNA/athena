@@ -166,10 +166,36 @@ def run_command(cmd: str, working_directory: str) -> CommandResult:
     return CommandResult(cmd, proc.returncode, ok=proc.returncode == 0, output_tail=tail)
 
 
-def find_missing_created_files(report: str, working_directory: str) -> list[str]:
-    """Arquivos citados como criados/editados que NÃO existem no disco."""
+def _repo_root(working_directory: str) -> str | None:
+    """Raiz do repo git que contém o wd (agentes costumam reportar paths
+    relativos à raiz, não ao working_directory)."""
+    try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"], cwd=working_directory,
+            capture_output=True, text=True, timeout=10,
+        )
+        return top.stdout.strip() if top.returncode == 0 else None
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def _file_exists(rel: str, working_directory: str, repo_root: str | None) -> bool:
     from pathlib import Path
 
+    if (Path(working_directory) / rel).exists():
+        return True
+    if repo_root and (Path(repo_root) / rel).exists():
+        return True
+    return False
+
+
+def find_missing_created_files(report: str, working_directory: str) -> list[str]:
+    """Arquivos citados como criados/editados que NÃO existem no disco.
+
+    O path citado pode ser relativo ao working_directory OU à raiz do repo —
+    os dois são aceitos antes de declarar o arquivo ausente.
+    """
+    repo_root = _repo_root(working_directory)
     missing: list[str] = []
     for rel in sorted(set(_FILES_CLAIMED_RE.findall(report or "")))[:20]:
         # Só conta como alegação de criação se houver verbo de criação perto.
@@ -179,7 +205,7 @@ def find_missing_created_files(report: str, working_directory: str) -> list[str]
             continue
         if rel.startswith(("http", "node_modules", ".venv")):
             continue
-        if not (Path(working_directory) / rel).exists():
+        if not _file_exists(rel, working_directory, repo_root):
             missing.append(rel)
     return missing
 

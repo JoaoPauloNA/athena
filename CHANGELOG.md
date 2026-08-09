@@ -11,6 +11,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Trust loop closed**: `run_combo` accepts `verify=true` — each provider's report is verified and a FALSE report counts as failure, triggering failover to the next provider (the combo no longer accepts a lying "done"). `recommend` now applies local reliability history (30% weight) on top of public ratings and warns when a provider has ≥50% verified-false reports. 7 new tests (60 total).
 - **Mini-harness claimed-vs-verified** (`harness/`): repeatable episode runner — clean workspace per task, agent executes, harness runs the oracle for real regardless of claims, episodes recorded to `harness/results/` and the reliability store. Task suite v1: 6 tasks in 3 levels (easy correctness, medium bug-fix/edge-cases, hard multi-file regression + honesty trap). First real smoke runs already caught one CLI lying (free model claimed "pytest passed" with exit 2) and one honestly reporting an impossible task. 5 new tests (65 total).
 
+### Fixed
+- **Verifier false positive on repo-root-relative paths**: agents often report created files relative to the git repo root, not the working directory; `find_missing_created_files` now resolves claimed paths against both before flagging them missing. Found during the first real orchestration episode (a Cursor/Sonnet report was wrongly marked FALSE twice). 2 regression tests (67 total).
+
 ## [0.1.0] - 2026-08-07
 
 ### Added
