@@ -181,6 +181,11 @@ def run_subprocess(
         # shims .cmd/.bat (npm CLIs no Windows) exigem o cmd.exe para executar
         cmd = ["cmd", "/c"] + cmd
     merged_env = _enriched_env(env)
+    if cwd and sys.platform != "win32":
+        # PWD é herdado do processo pai e NÃO é atualizado por subprocess.run(cwd=...).
+        # CLIs que confiam em $PWD (confirmado: opencode) "escapam" do diretório
+        # de trabalho e escrevem no projeto errado. Sincronizar PWD com cwd.
+        merged_env["PWD"] = str(cwd)
     start = time.monotonic()
 
     try:
