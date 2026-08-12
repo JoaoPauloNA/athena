@@ -25,3 +25,6 @@ frontend/node_modules/
 
 # Harness results (local episodes)
 harness/results/
+
+# Polygraph (repo irmão aninhado no workspace)
+polygraph/

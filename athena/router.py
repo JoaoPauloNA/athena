@@ -5,7 +5,7 @@ import time
 
 from athena.bridge import RunResult
 from athena.combos import get_combo
-from athena.providers import ask_provider
+from athena.providers import PROVIDERS, ask_provider
 
 
 class AllProvidersFailed(Exception):
@@ -147,13 +147,21 @@ def test_combo(combo_id: str) -> list[dict]:
 
     for step in combo.chain:
         try:
+            spec = PROVIDERS.get(step.provider_id)
+            if step.timeout is not None:
+                test_timeout = step.timeout
+            elif spec is not None:
+                test_timeout = max(90, min(spec.default_timeout, 120))
+            else:
+                test_timeout = 120
+
             result = ask_provider(
                 step.provider_id,
                 test_prompt,
                 role=None,
                 use_default_role=False,
                 model=step.model,
-                timeout=min(step.timeout or 30, 30),
+                timeout=test_timeout,
                 skip_permissions=True,
             )
             results.append({

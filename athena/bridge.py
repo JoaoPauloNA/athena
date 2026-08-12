@@ -126,6 +126,8 @@ class RunResult:
     command: list[str]
     output: str
     exit_code: int
+    stdout: str | None = None
+    stderr: str | None = None
     timed_out: bool = False
     error: str | None = None
     role: str | None = None
@@ -146,6 +148,10 @@ class RunResult:
         }
         if self.role is not None:
             payload["role"] = self.role
+        if self.stdout is not None:
+            payload["stdout"] = self.stdout
+        if self.stderr is not None:
+            payload["stderr"] = self.stderr
         if self.report_format_ok is not None:
             payload["report_format_ok"] = self.report_format_ok
         if self.warnings:
@@ -202,27 +208,29 @@ def run_subprocess(
             run_kwargs["input"] = input_text
 
         completed = subprocess.run(cmd, **run_kwargs)
-        output = clean_cli_output(
-            _stream_to_str(completed.stdout)
-            + ("\n" + _stream_to_str(completed.stderr) if completed.stderr else "")
-        )
+        stdout = clean_cli_output(_stream_to_str(completed.stdout))
+        stderr = clean_cli_output(_stream_to_str(completed.stderr))
+        output = "\n".join(part for part in (stdout, stderr) if part)
         return RunResult(
             provider=provider,
             command=cmd,
             output=output,
             exit_code=completed.returncode,
+            stdout=stdout,
+            stderr=stderr,
             duration_s=time.monotonic() - start,
         )
     except subprocess.TimeoutExpired as exc:
-        partial = clean_cli_output(
-            _stream_to_str(exc.stdout)
-            + ("\n" + _stream_to_str(exc.stderr) if exc.stderr else "")
-        )
+        stdout = clean_cli_output(_stream_to_str(exc.stdout))
+        stderr = clean_cli_output(_stream_to_str(exc.stderr))
+        partial = "\n".join(part for part in (stdout, stderr) if part)
         return RunResult(
             provider=provider,
             command=cmd,
             output=partial,
             exit_code=124,
+            stdout=stdout,
+            stderr=stderr,
             timed_out=True,
             error=f"Timeout após {timeout}s",
             duration_s=time.monotonic() - start,
