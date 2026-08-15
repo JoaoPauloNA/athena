@@ -10,7 +10,7 @@ Regra de segurança:
 - Apenas comandos de uma whitelist de verificação (testes/lint), token a
   token via shlex (nunca shell), com timeout e no máximo MAX_COMMANDS.
 - Se o relatório ADMITE a falha perto do comando ("pytest falhou..."),
-  o comando não é re-rodado — relatório honesto não é mentira.
+  o comando não é re-rodado; não há alegação positiva a confirmar.
 - ATHENA_VERIFY_MODE=advisory desliga esta camada globalmente.
 """
 
@@ -19,8 +19,10 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import subprocess
 from dataclasses import dataclass, field
+
+from athena.bridge import run_subprocess
+from athena.execution import DeadlineBudget, ExecutionControl
 
 # Comandos de verificação permitidos (primeiro token) → sem efeitos destrutivos.
 _ALLOWED_BINS = {
@@ -79,15 +81,29 @@ class CommandResult:
     ok: bool
     output_tail: str = ""
     error: str = ""
+    execution: dict | None = None
+    termination_unconfirmed: bool = False
+    timed_out: bool = False
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(
+        self,
+        *,
+        include_execution: bool = False,
+        include_output_tail: bool = True,
+    ) -> dict:
+        payload = {
             "command": self.command,
             "exit_code": self.exit_code,
             "ok": self.ok,
-            "output_tail": self.output_tail[-500:],
             "error": self.error,
+            "termination_unconfirmed": self.termination_unconfirmed,
+            "timed_out": self.timed_out,
         }
+        if include_output_tail:
+            payload["output_tail"] = self.output_tail[-500:]
+        if include_execution:
+            payload["execution"] = self.execution
+        return payload
 
 
 @dataclass
@@ -96,13 +112,32 @@ class DeterministicVerdict:
     motivos: list[str] = field(default_factory=list)
     checks: list[CommandResult] = field(default_factory=list)
     missing_files: list[str] = field(default_factory=list)
+    execution: dict | None = None
+    termination_unconfirmed: bool = False
+    deadline_exhausted: bool = False
+    timed_out: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(
+        self,
+        *,
+        include_check_execution: bool = False,
+        include_check_output_tail: bool = True,
+    ) -> dict:
         return {
             "verdadeiro": self.verdadeiro,
             "motivos": self.motivos,
-            "checks": [c.to_dict() for c in self.checks],
+            "checks": [
+                c.to_dict(
+                    include_execution=include_check_execution,
+                    include_output_tail=include_check_output_tail,
+                )
+                for c in self.checks
+            ],
             "missing_files": self.missing_files,
+            "execution": self.execution,
+            "termination_unconfirmed": self.termination_unconfirmed,
+            "deadline_exhausted": self.deadline_exhausted,
+            "timed_out": self.timed_out,
         }
 
 
@@ -148,35 +183,82 @@ def _is_allowed(cmd: str) -> bool:
     return True
 
 
-def run_command(cmd: str, working_directory: str) -> CommandResult:
+def run_command(
+    cmd: str,
+    working_directory: str,
+    *,
+    budget: DeadlineBudget | None = None,
+    execution_control: ExecutionControl | None = None,
+) -> CommandResult:
     """Executa um comando da whitelist e devolve o exit code real."""
-    try:
-        proc = subprocess.run(
-            shlex.split(cmd),
-            cwd=working_directory,
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT,
+    if budget is not None and budget.expired:
+        return CommandResult(
+            cmd,
+            None,
+            ok=False,
+            error="verification_deadline",
+            timed_out=True,
         )
-    except subprocess.TimeoutExpired:
-        return CommandResult(cmd, None, ok=False, error=f"timeout após {COMMAND_TIMEOUT}s")
-    except OSError as exc:
-        return CommandResult(cmd, None, ok=False, error=str(exc))
-    tail = (proc.stdout + "\n" + proc.stderr).strip()
-    return CommandResult(cmd, proc.returncode, ok=proc.returncode == 0, output_tail=tail)
+    timeout_s = COMMAND_TIMEOUT
+    if budget is not None:
+        timeout_s = budget.child_timeout(COMMAND_TIMEOUT)
+        if timeout_s <= 0:
+            return CommandResult(
+                cmd,
+                None,
+                ok=False,
+                error="verification_deadline",
+                timed_out=True,
+            )
+    result = run_subprocess(
+        "verifier",
+        shlex.split(cmd),
+        cwd=working_directory,
+        timeout=timeout_s,
+        execution_control=execution_control,
+        service_profile="verification",
+    )
+    tail = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+    execution = result.execution
+    state = (execution or {}).get("state")
+    return CommandResult(
+        cmd,
+        result.exit_code,
+        ok=result.exit_code == 0 and not result.timed_out,
+        output_tail=tail,
+        error=result.error or "",
+        execution=execution,
+        termination_unconfirmed=state == "TERMINATION_UNCONFIRMED",
+        timed_out=result.timed_out,
+    )
 
 
-def _repo_root(working_directory: str) -> str | None:
+def _repo_root(
+    working_directory: str,
+    *,
+    budget: DeadlineBudget | None = None,
+    execution_control: ExecutionControl | None = None,
+) -> tuple[str | None, dict | None, bool]:
     """Raiz do repo git que contém o wd (agentes costumam reportar paths
     relativos à raiz, não ao working_directory)."""
-    try:
-        top = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"], cwd=working_directory,
-            capture_output=True, text=True, timeout=10,
-        )
-        return top.stdout.strip() if top.returncode == 0 else None
-    except (subprocess.TimeoutExpired, OSError):
-        return None
+    if budget is not None and budget.expired:
+        return None, None, True
+    timeout_s = 10.0
+    if budget is not None:
+        timeout_s = budget.child_timeout(timeout_s)
+        if timeout_s <= 0:
+            return None, None, True
+    top = run_subprocess(
+        "verifier",
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=working_directory,
+        timeout=timeout_s,
+        execution_control=execution_control,
+        service_profile="verification",
+    )
+    if top.exit_code == 0:
+        return (top.stdout or "").strip(), top.execution, top.timed_out
+    return None, top.execution, top.timed_out
 
 
 def _file_exists(rel: str, working_directory: str, repo_root: str | None) -> bool:
@@ -189,13 +271,23 @@ def _file_exists(rel: str, working_directory: str, repo_root: str | None) -> boo
     return False
 
 
-def find_missing_created_files(report: str, working_directory: str) -> list[str]:
+def find_missing_created_files(
+    report: str,
+    working_directory: str,
+    *,
+    budget: DeadlineBudget | None = None,
+    execution_control: ExecutionControl | None = None,
+) -> tuple[list[str], dict | None, bool]:
     """Arquivos citados como criados/editados que NÃO existem no disco.
 
     O path citado pode ser relativo ao working_directory OU à raiz do repo —
     os dois são aceitos antes de declarar o arquivo ausente.
     """
-    repo_root = _repo_root(working_directory)
+    repo_root, repo_root_execution, repo_root_timed_out = _repo_root(
+        working_directory,
+        budget=budget,
+        execution_control=execution_control,
+    )
     missing: list[str] = []
     for rel in sorted(set(_FILES_CLAIMED_RE.findall(report or "")))[:20]:
         # Só conta como alegação de criação se houver verbo de criação perto.
@@ -207,21 +299,47 @@ def find_missing_created_files(report: str, working_directory: str) -> list[str]
             continue
         if not _file_exists(rel, working_directory, repo_root):
             missing.append(rel)
-    return missing
+    return missing, repo_root_execution, repo_root_timed_out
 
 
-def deterministic_verify(report: str, working_directory: str) -> DeterministicVerdict:
+def deterministic_verify(
+    report: str,
+    working_directory: str,
+    *,
+    budget: DeadlineBudget | None = None,
+    execution_control: ExecutionControl | None = None,
+) -> DeterministicVerdict:
     """Verificação 100% determinística. None = inconclusivo (usar advisory)."""
     if os.environ.get("ATHENA_VERIFY_MODE", "auto").lower() == "advisory":
         return DeterministicVerdict(verdadeiro=None)
 
     verdict = DeterministicVerdict(verdadeiro=None)
+    if budget is not None and budget.expired:
+        verdict.deadline_exhausted = True
+        return verdict
     contradictions: list[str] = []
     supports: list[str] = []
 
     # 1. Arquivos alegados como criados que não existem → contradição dura.
-    missing = find_missing_created_files(report, working_directory)
+    missing, repo_root_execution, repo_root_timed_out = find_missing_created_files(
+        report, working_directory, budget=budget, execution_control=execution_control
+    )
     verdict.missing_files = missing
+    if repo_root_execution is not None:
+        verdict.execution = repo_root_execution
+        state = repo_root_execution.get("state")
+        if state == "TERMINATION_UNCONFIRMED":
+            verdict.termination_unconfirmed = True
+            return verdict
+        if state == "CANCELLED":
+            if repo_root_timed_out:
+                verdict.deadline_exhausted = True
+                verdict.timed_out = True
+            return verdict
+    if repo_root_timed_out:
+        verdict.deadline_exhausted = True
+        verdict.timed_out = True
+        return verdict
     if missing:
         contradictions.append(
             "arquivos alegados como criados não existem: " + ", ".join(missing[:5])
@@ -229,12 +347,25 @@ def deterministic_verify(report: str, working_directory: str) -> DeterministicVe
 
     # 2. Re-rodar comandos de verificação alegados e comparar exit codes.
     for cmd in extract_claimed_commands(report):
+        if budget is not None and budget.expired:
+            verdict.deadline_exhausted = True
+            return verdict
         if not _is_allowed(cmd):
             continue
-        result = run_command(cmd, working_directory)
+        result = run_command(
+            cmd, working_directory, budget=budget, execution_control=execution_control
+        )
         verdict.checks.append(result)
+        if result.execution and verdict.execution is None:
+            verdict.execution = result.execution
+        if result.termination_unconfirmed:
+            verdict.termination_unconfirmed = True
         if result.error:
             supports.append(f"'{cmd}' não pôde ser re-executado ({result.error})")
+            if result.timed_out:
+                verdict.deadline_exhausted = True
+                verdict.timed_out = True
+                return verdict
         elif result.ok:
             supports.append(f"'{cmd}' confirmado (exit 0)")
         else:

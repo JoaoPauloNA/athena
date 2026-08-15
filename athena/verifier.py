@@ -1,4 +1,4 @@
-"""Verificador ("detector de mentiras") de relatórios de CLIs executoras.
+"""Verificador de alegações em relatórios de CLIs executoras.
 
 Problema: um CLI pode devolver um relatório de 10 tópicos dizendo
 "9. Status final: OK" sem ter feito o trabalho de verdade. O orquestrador
@@ -14,12 +14,16 @@ O verificador NUNCA é o mesmo provider que executou a tarefa (anti-conluio).
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
-import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from athena.bridge import run_subprocess
+from athena.execution import DeadlineBudget, ExecutionControl, ExecutionRecord, ExecutionState
 
 # Cadeia estática de fallback (usada só se a seleção dinâmica falhar).
 VERIFIER_CHAIN: list[tuple] = [
@@ -46,9 +50,10 @@ class Verdict:
     verificador: str = ""                # provider/modelo que verificou
     tentativas: int = 1
     escalado: bool = False               # True = FALSO 2x → orquestrador decide
+    execution: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "verdadeiro": self.verdadeiro,
             "confianca": self.confianca,
             "motivos": self.motivos,
@@ -56,38 +61,96 @@ class Verdict:
             "tentativas": self.tentativas,
             "escalado": self.escalado,
         }
+        if self.execution is not None:
+            payload["execution"] = self.execution
+        return payload
 
 
-def collect_evidence(working_directory: str | None, report: str) -> str:
+def collect_evidence(
+    working_directory: str | None,
+    report: str,
+    *,
+    budget: DeadlineBudget | None = None,
+    execution_control: ExecutionControl | None = None,
+) -> tuple[str, dict | None, bool]:
     """Coleta evidências OBJETIVAS do projeto (sem rodar nada destrutivo)."""
     parts: list[str] = []
     wd = working_directory or os.getcwd()
+    evidence_execution: dict | None = None
+    evidence_timed_out = False
 
     # git rev-parse sobe a árvore até achar o repo (wd pode ser um subdiretório)
-    try:
-        top = subprocess.run(
+    def _is_terminal_stop(execution: dict | None) -> bool:
+        state = (execution or {}).get("state")
+        return state in {
+            ExecutionState.CANCELLED.value,
+            ExecutionState.TERMINATION_UNCONFIRMED.value,
+        }
+
+    top_timeout = budget.child_timeout(10) if budget is not None else 10
+    if top_timeout <= 0:
+        parts.append(f"(diretório {wd} não está dentro de um repo git)")
+        return "\n\n".join(parts), evidence_execution, True
+    top = run_subprocess(
+        "verifier",
             ["git", "rev-parse", "--show-toplevel"], cwd=wd,
-            capture_output=True, text=True, timeout=10,
+            timeout=top_timeout,
+            execution_control=execution_control,
+            service_profile="verification",
         )
-        repo_root = top.stdout.strip() if top.returncode == 0 else None
-    except (subprocess.TimeoutExpired, OSError):
-        repo_root = None
+    if top.execution is not None:
+        evidence_execution = top.execution
+        if _is_terminal_stop(top.execution):
+            parts.append(f"(diretório {wd} não está dentro de um repo git)")
+            return "\n\n".join(parts), evidence_execution, top.timed_out
+    evidence_timed_out = evidence_timed_out or top.timed_out
+    repo_root = (top.stdout or "").strip() if top.exit_code == 0 else None
 
     if repo_root:
-        try:
-            status = subprocess.run(
+        status_timeout = budget.child_timeout(10) if budget is not None else 10
+        if status_timeout <= 0:
+            parts.append(f"repo git: {repo_root}")
+            return "\n\n".join(parts), evidence_execution, True
+        status_result = run_subprocess(
+            "verifier",
                 ["git", "status", "--short"], cwd=wd,
-                capture_output=True, text=True, timeout=10,
-            ).stdout.strip()
-            diffstat = subprocess.run(
-                ["git", "diff", "--stat", "HEAD"], cwd=wd,
-                capture_output=True, text=True, timeout=10,
-            ).stdout.strip()
+                timeout=status_timeout,
+                execution_control=execution_control,
+                service_profile="verification",
+            )
+        if status_result.execution is not None:
+            evidence_execution = status_result.execution
+            if _is_terminal_stop(status_result.execution):
+                parts.append(f"repo git: {repo_root}")
+                return "\n\n".join(parts), evidence_execution, status_result.timed_out
+        evidence_timed_out = evidence_timed_out or status_result.timed_out
+        status = (status_result.stdout or "").strip()
+        diff_timeout = budget.child_timeout(10) if budget is not None else 10
+        if diff_timeout <= 0:
             parts.append(f"repo git: {repo_root}")
             parts.append(f"git status --short:\n{status or '(limpo — nada modificado)'}")
+            return "\n\n".join(parts), evidence_execution, True
+        diffstat_result = run_subprocess(
+            "verifier",
+                ["git", "diff", "--stat", "HEAD"], cwd=wd,
+                timeout=diff_timeout,
+                execution_control=execution_control,
+                service_profile="verification",
+            )
+        if diffstat_result.execution is not None:
+            evidence_execution = diffstat_result.execution
+            if _is_terminal_stop(diffstat_result.execution):
+                parts.append(f"repo git: {repo_root}")
+                parts.append(f"git status --short:\n{status or '(limpo — nada modificado)'}")
+                return "\n\n".join(parts), evidence_execution, diffstat_result.timed_out
+        evidence_timed_out = evidence_timed_out or diffstat_result.timed_out
+        diffstat = (diffstat_result.stdout or "").strip()
+        parts.append(f"repo git: {repo_root}")
+        parts.append(f"git status --short:\n{status or '(limpo — nada modificado)'}")
+        if diffstat_result.exit_code == 0:
             parts.append(f"git diff --stat HEAD:\n{diffstat or '(sem diff)'}")
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            parts.append(f"(git indisponível: {exc})")
+        else:
+            parts.append("git diff --stat HEAD:\n(sem diff ou HEAD indisponível)")
     else:
         parts.append(f"(diretório {wd} não está dentro de um repo git)")
 
@@ -103,7 +166,7 @@ def collect_evidence(working_directory: str | None, report: str) -> str:
                 lines.append(f"  NÃO EXISTE {rel}")
         parts.append("Arquivos citados no relatório:\n" + "\n".join(lines))
 
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), evidence_execution, evidence_timed_out
 
 
 _VERIFY_PROMPT = """Você é um VERIFICADOR de relatórios técnicos. Um agente executor afirma ter concluído uma tarefa. Decida se o relatório é VERDADEIRO ou FALSO comparando-o com as evidências objetivas do projeto.
@@ -188,6 +251,11 @@ def verify_report(
     *,
     working_directory: str | None = None,
     executor_provider: str = "",
+    execution_id: str | None = None,
+    attempt_id: str | None = None,
+    on_execution_update: Callable[[dict], None] | None = None,
+    execution_control: ExecutionControl | None = None,
+    verification_timeout_s: float = 600,
 ) -> Verdict:
     """Verifica um relatório. Retorna Verdict (verdadeiro=None se não deu pra verificar).
 
@@ -197,62 +265,256 @@ def verify_report(
     2. ADVISORY (modelo barato): triagem para o que não tem oráculo
        automatizável. ATHENA_VERIFY_MODE=advisory|deterministic|auto.
     """
+    if (
+        isinstance(verification_timeout_s, bool)
+        or float(verification_timeout_s) <= 0
+        or not math.isfinite(float(verification_timeout_s))
+    ):
+        raise ValueError("verification_timeout_s deve ser número positivo")
     wd = working_directory or os.getcwd()
     mode = os.environ.get("ATHENA_VERIFY_MODE", "auto").lower()
+    lifecycle_kwargs: dict[str, str] = {}
+    if execution_id is not None:
+        lifecycle_kwargs["execution_id"] = execution_id
+    if attempt_id is not None:
+        lifecycle_kwargs["attempt_id"] = attempt_id
+    phase = ExecutionRecord(
+        provider="verifier",
+        profile="verification",
+        on_update=on_execution_update,
+        **lifecycle_kwargs,
+    )
+    phase.transition(ExecutionState.STARTING)
+    phase.transition(ExecutionState.RUNNING)
+    phase.configure_deadlines(absolute_deadline_s=float(verification_timeout_s))
+    budget = DeadlineBudget(verification_timeout_s)
+
+    def _terminate_with(state: ExecutionState, *, reason: str | None = None) -> dict:
+        if execution_control is not None and execution_control.client_abandoned:
+            phase.mark_client_abandoned()
+        if state == ExecutionState.CANCELLED:
+            phase.transition(ExecutionState.CANCELLATION_REQUESTED, reason=reason)
+            phase.transition(ExecutionState.TERMINATING, reason=reason)
+            phase.transition(ExecutionState.CANCELLED, reason=reason)
+        elif state == ExecutionState.TERMINATION_UNCONFIRMED:
+            phase.transition(ExecutionState.TERMINATING, reason=reason)
+            phase.transition(ExecutionState.TERMINATION_UNCONFIRMED, reason=reason)
+        else:
+            phase.transition(state, reason=reason)
+        return phase.to_dict()
+
+    def _timed_out_execution() -> dict:
+        return _terminate_with(
+            ExecutionState.TIMED_OUT,
+            reason="verification_deadline",
+        )
 
     from athena.dverify import deterministic_verify
 
-    det = deterministic_verify(report, wd)
-    if det.verdadeiro is not None:
-        return Verdict(
-            verdadeiro=det.verdadeiro,
-            confianca="alta",
-            motivos=det.motivos,
-            evidencias=json.dumps(det.to_dict(), ensure_ascii=False),
-            verificador="deterministic",
+    try:
+        if budget.expired:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Orçamento da verificação expirou antes de iniciar os estágios."],
+                verificador="deterministic",
+                execution=_timed_out_execution(),
+            )
+        det = deterministic_verify(
+            report,
+            wd,
+            budget=budget,
+            execution_control=execution_control,
         )
-    if mode == "deterministic":
-        return Verdict(
-            verdadeiro=None,
-            motivos=["Nenhuma alegação verificável deterministicamente no relatório."],
-            verificador="deterministic",
+        if det.termination_unconfirmed:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Verificador determinístico com terminação indeterminada."],
+                verificador="deterministic",
+                execution=_terminate_with(ExecutionState.TERMINATION_UNCONFIRMED),
+            )
+        if det.deadline_exhausted:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Orçamento da verificação esgotado durante etapa determinística."],
+                verificador="deterministic",
+                execution=_timed_out_execution(),
+            )
+        deterministic_cancelled = (
+            (
+                (getattr(det, "execution", None) or {}).get("state")
+                == ExecutionState.CANCELLED.value
+                and not bool(getattr(det, "timed_out", False))
+            )
+            or any(
+                (check.execution or {}).get("state") == ExecutionState.CANCELLED.value
+                and not check.timed_out
+                for check in det.checks
+            )
         )
+        if deterministic_cancelled:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Verificação cancelada por solicitação de cancelamento."],
+                verificador="deterministic",
+                execution=_terminate_with(
+                    ExecutionState.CANCELLED,
+                    reason=(execution_control.cancel_reason if execution_control else "user_requested"),
+                ),
+            )
+        if det.verdadeiro is not None:
+            det_payload = det.to_dict(
+                include_check_execution=False,
+                include_check_output_tail=False,
+            )
+            det_payload.pop("execution", None)
+            return Verdict(
+                verdadeiro=det.verdadeiro,
+                confianca="alta",
+                motivos=det.motivos,
+                evidencias=json.dumps(det_payload, ensure_ascii=False),
+                verificador="deterministic",
+                execution=_terminate_with(ExecutionState.COMPLETED),
+            )
+        if mode == "deterministic":
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Nenhuma alegação verificável deterministicamente no relatório."],
+                verificador="deterministic",
+                execution=_terminate_with(ExecutionState.COMPLETED),
+            )
+        if budget.expired:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Orçamento da verificação expirou antes da etapa advisory."],
+                verificador="deterministic",
+                execution=_timed_out_execution(),
+            )
 
-    chosen = pick_verifier(executor_provider)
-    if not chosen:
-        return Verdict(verdadeiro=None, motivos=["Nenhum verificador disponível."])
+        chosen = pick_verifier(executor_provider)
+        if not chosen:
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Nenhum verificador disponível."],
+                execution=_terminate_with(ExecutionState.COMPLETED),
+            )
 
-    provider_id, model = chosen
-    evidence = collect_evidence(working_directory, report)
-    prompt = _VERIFY_PROMPT.format(task=task_prompt, report=report, evidence=evidence)
+        provider_id, model = chosen
+        evidence, evidence_execution, evidence_timed_out = collect_evidence(
+            working_directory,
+            report,
+            budget=budget,
+            execution_control=execution_control,
+        )
+        if (evidence_execution or {}).get("state") == ExecutionState.TERMINATION_UNCONFIRMED.value:
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Coleta de evidências terminou com terminação indeterminada."],
+                verificador="deterministic",
+                execution=_terminate_with(ExecutionState.TERMINATION_UNCONFIRMED),
+            )
+        if evidence_timed_out:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Orçamento da verificação esgotado durante a coleta de evidências."],
+                verificador="deterministic",
+                execution=_timed_out_execution(),
+            )
+        if (evidence_execution or {}).get("state") == ExecutionState.CANCELLED.value:
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Coleta de evidências cancelada."],
+                verificador="deterministic",
+                execution=_terminate_with(
+                    ExecutionState.CANCELLED,
+                    reason=(execution_control.cancel_reason if execution_control else "user_requested"),
+                ),
+            )
+        prompt = _VERIFY_PROMPT.format(task=task_prompt, report=report, evidence=evidence)
 
-    # Import tardio para evitar ciclo providers ↔ verifier
-    from athena.providers import ask_provider
+        # Import tardio para evitar ciclo providers ↔ verifier
+        from athena.providers import ask_provider
 
-    result = ask_provider(
-        provider_id,
-        prompt,
-        use_default_role=False,
-        model=model,
-        working_directory=working_directory,
-        timeout=120,
-        with_contract=False,
-    )
-    parsed = _parse_verdict(result.output)
-    if parsed is None:
+        advisory_timeout = budget.child_timeout(min(120.0, budget.remaining))
+        if advisory_timeout <= 0:
+            return Verdict(
+                verdadeiro=None,
+                confianca="baixa",
+                motivos=["Orçamento da verificação expirou antes da chamada advisory."],
+                verificador="deterministic",
+                execution=_timed_out_execution(),
+            )
+        result = ask_provider(
+            provider_id,
+            prompt,
+            use_default_role=False,
+            model=model,
+            working_directory=working_directory,
+            timeout=advisory_timeout,
+            service_profile="verification",
+            with_contract=False,
+            execution_id=phase.execution_id,
+            attempt_id=phase.attempt_id,
+            execution_control=execution_control,
+        )
+        if (result.execution or {}).get("state") == ExecutionState.TERMINATION_UNCONFIRMED.value:
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Verificador advisory terminou com terminação indeterminada."],
+                evidencias=evidence,
+                verificador=f"{provider_id}/{model or 'default'}",
+                execution=_terminate_with(ExecutionState.TERMINATION_UNCONFIRMED),
+            )
+        if result.timed_out:
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Orçamento da verificação expirou na chamada advisory."],
+                evidencias=evidence,
+                verificador=f"{provider_id}/{model or 'default'}",
+                execution=_timed_out_execution(),
+            )
+        if (result.execution or {}).get("state") == ExecutionState.CANCELLED.value:
+            return Verdict(
+                verdadeiro=None,
+                motivos=["Verificador advisory cancelado."],
+                evidencias=evidence,
+                verificador=f"{provider_id}/{model or 'default'}",
+                execution=_terminate_with(
+                    ExecutionState.CANCELLED,
+                    reason=(execution_control.cancel_reason if execution_control else "user_requested"),
+                ),
+            )
+        parsed = _parse_verdict(result.output)
+        if parsed is None:
+            return Verdict(
+                verdadeiro=None,
+                motivos=[f"Verificador {provider_id} não retornou JSON válido."],
+                evidencias=evidence,
+                verificador=f"{provider_id}/{model or 'default'}",
+                execution=_terminate_with(ExecutionState.COMPLETED),
+            )
         return Verdict(
-            verdadeiro=None,
-            motivos=[f"Verificador {provider_id} não retornou JSON válido."],
+            verdadeiro=parsed["verdadeiro"],
+            confianca=str(parsed.get("confianca", "baixa")),
+            motivos=[str(m) for m in parsed.get("motivos", [])][:5],
             evidencias=evidence,
             verificador=f"{provider_id}/{model or 'default'}",
+            execution=_terminate_with(ExecutionState.COMPLETED),
         )
-    return Verdict(
-        verdadeiro=parsed["verdadeiro"],
-        confianca=str(parsed.get("confianca", "baixa")),
-        motivos=[str(m) for m in parsed.get("motivos", [])][:5],
-        evidencias=evidence,
-        verificador=f"{provider_id}/{model or 'default'}",
-    )
+    except Exception as exc:
+        return Verdict(
+            verdadeiro=None,
+            motivos=[f"Erro interno do verificador: {exc}"],
+            execution=_terminate_with(
+                ExecutionState.FAILED,
+                reason="internal_verifier_error",
+            ),
+        )
 
 
 _FIX_PROMPT_PREFIX = """⚠️ SEU RELATÓRIO ANTERIOR FOI MARCADO COMO FALSO POR UM VERIFICADOR INDEPENDENTE.

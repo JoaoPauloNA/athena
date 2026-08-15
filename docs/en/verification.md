@@ -5,28 +5,31 @@
 
 ## Motivation
 
-Agent CLIs routinely report "done, tests passing" when that is not what
-happened. Evaluation evidence from 2026 is sobering: a large share of
-"passes" in widely cited benchmarks corresponded to tasks that were never
-actually solved, and the academic literature has named the phenomenon
-(*"Confident and Wrong"*, *"Silent Semantic Failures"*). Harnesses built by
-agent vendors are structurally incentivized to mark success — a neutral
-verification layer does not have that conflict of interest.
+An executor report and the observable state of a project can disagree: a
+command may not have run, a cited file may not exist, or a failure may have
+been omitted. Athena treats the report as a claim to inspect, not as ground
+truth. This document makes no prevalence claim about that mismatch outside
+Athena's own local evidence.
 
 Athena's verifier exists to measure, locally and per-provider, the distance
 between **claimed** (what the agent says it did) and **verified** (what can
-actually be confirmed).
+actually be confirmed) — for the specific claims a report makes, not as a
+general proof that the work is correct.
 
 ## Two layers, different rules
 
 | Layer | How it works | Role |
 |---|---|---|
-| **Advisory verifier** (implemented) | A cheap model (free tier first, e.g. opencode free) reads the executor's report plus project evidence and returns true/false. Anti-collusion: the verifier is never the same provider as the executor. FALSE → back for correction; FALSE twice → escalates to the orchestrator/human. | Triage. Never blocks alone, never produces a public number. |
-| **Deterministic verifier** (implemented) | Re-runs exactly what the report claims (whitelisted test/lint commands, no shell, per-command timeout), compares real exit codes, and checks that files claimed as created actually exist. **No model anywhere in the chain** — AI judging AI would destroy the credibility of the number. | The layer that produces trustworthy `claimed vs verified` metrics. Short-circuits the advisory layer when conclusive. Controlled by `ATHENA_VERIFY_MODE=auto|deterministic|advisory`. |
+| **Deterministic verifier** (`athena/dverify.py`, implemented) | No model anywhere in the chain. Re-runs exactly what the report claims to have run — a fixed whitelist of test/lint commands (`pytest`, `ruff`, `npm test`, …), token-split via `shlex` (never a shell), capped at 3 commands with a per-command timeout — and compares real exit codes; separately checks that files the report claims to have created/edited actually exist. Skips re-running a command if the report already admits it failed nearby (an honest report about a failure is not treated as a lie). | The layer that produces the most trustworthy signal, but only for whitelisted commands and cited files. Silent on anything else — no verdict, not a pass. Short-circuits the advisory layer when conclusive. Controlled by `ATHENA_VERIFY_MODE=auto\|deterministic\|advisory`. |
+| **Advisory verifier** (`athena/verifier.py`, implemented) | A cheap model (free tier first, e.g. opencode free) reads the executor's report plus objective project evidence (`git status`, `git diff --stat`, cited-file existence) and returns true/false. Anti-collusion: the verifier is never the same provider as the executor. FALSE can trigger one corrective retry or conditional combo fallback; a repeated FALSE escalates. | Triage for whatever the deterministic layer can't decide (no automatable oracle: prose, configuration, exploration). A model judging a model: its verdict can drive the configured workflow, but is not proof and must not be reported as an objective correctness metric. |
 
-The advisory layer stays useful even after deterministic checks land: many
-tasks have no automatable oracle (prose, configuration, exploration), and
-cheap triage avoids spending paid-model quota on verification.
+## Scope and limits
+
+- Both layers only judge what the report itself makes checkable: commands it cites and files it cites. A report that claims something outside those two categories is not verified either way.
+- The deterministic layer's "true" means "the commands it re-ran exited 0 and the cited files exist" — not "the change is correct" or "nothing else broke."
+- The advisory layer is model-based triage, not an oracle; treat its FALSE as a strong signal to look closer, and its TRUE as "nothing contradictory found," not a guarantee.
+- `run_combo(verify=true)` and `ask_provider(verify=true)` use this pipeline. **`deliberate` does not run any verification** — see the roadmap below.
+- A verification phase that cannot confirm its own subprocess termination reports `TERMINATION_UNCONFIRMED` rather than guessing a verdict, and that blocks fallback/lease release the same way an unconfirmed executor attempt does (see [Architecture](architecture.md#execution-lifecycle)).
 
 ## Roadmap
 

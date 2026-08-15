@@ -6,10 +6,12 @@ import re
 import subprocess
 import sys
 import threading
-from collections.abc import Sequence
+import uuid
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
+from athena import workspace_lease
 from athena.agents import (
     DEFAULT_PROVIDER_ROLES,
     apply_role,
@@ -18,6 +20,7 @@ from athena.agents import (
 )
 from athena.bridge import RunResult, _enriched_env, run_subprocess, run_with_pty, which
 from athena.contract import apply_contract, check_report_format
+from athena.execution import ExecutionControl, ExecutionRecord, ExecutionState
 from athena.models import (
     catalog_meta,
     get_recommended_default_model,
@@ -29,6 +32,10 @@ from athena.models import (
     is_heavy_model as catalog_is_heavy,
 )
 from athena.selfdetect import detect_self_provider
+from athena.service_profiles import (
+    resolve_service_profile,
+    resolve_timeouts,
+)
 from athena.ssh import build_ssh_command
 from athena.usage import record_usage
 
@@ -516,7 +523,7 @@ def _build_command(
         return cmd
 
     if spec.id == "agy":
-        print_timeout = timeout or spec.default_timeout
+        print_timeout = timeout if timeout is not None else spec.default_timeout
         cmd.extend(["-p", prompt, "--print-timeout", f"{print_timeout}s"])
         if model:
             cmd.extend(["--model", model])
@@ -598,15 +605,84 @@ def ask_provider(
     task_type: str | None = None,
     ssh_host: str | None = None,
     with_contract: bool = True,
+    execution_id: str | None = None,
+    attempt_id: str | None = None,
+    on_execution_update: Callable[[dict], None] | None = None,
+    execution_control: ExecutionControl | None = None,
+    service_profile: str | None = None,
+    idle_timeout: float | None = None,
+    retain_workspace_lease: bool = False,
 ) -> RunResult:
-    spec = PROVIDERS.get(provider_id)
-    if spec is None:
+    effective_execution_id = execution_id or uuid.uuid4().hex
+    effective_attempt_id = attempt_id or uuid.uuid4().hex
+    canonical_workspace = (
+        workspace_lease.canonicalize_workspace(working_directory)
+        if working_directory
+        else None
+    )
+
+    def _lease_retained_warning() -> str:
+        return (
+            "workspace_lease_retained_fail_closed: terminação da fase não foi "
+            "confirmada com segurança; lease mantida."
+        )
+
+    def _prelaunch_failed_result(
+        *,
+        exit_code: int,
+        error: str,
+        command: list[str],
+        reason: str,
+        transport: str = "local",
+    ) -> RunResult:
+        # Pré-lançamento: nenhum subprocesso foi criado, então o record fica
+        # em FAILED com process_created=False.
+        record = ExecutionRecord(
+            provider=provider_id,
+            profile=resolved_profile.id,
+            transport=transport,
+            on_update=on_execution_update,
+            execution_id=effective_execution_id,
+            attempt_id=effective_attempt_id,
+        )
+        record.transition(ExecutionState.FAILED, reason=reason)
         return RunResult(
             provider=provider_id,
-            command=[],
+            command=command,
             output="",
+            exit_code=exit_code,
+            error=error,
+            execution=record.to_dict(),
+        )
+
+    spec = PROVIDERS.get(provider_id)
+    resolved_profile = resolve_service_profile(
+        explicit_profile_id=service_profile,
+        provider_id=provider_id,
+        task_type=task_type,
+        working_directory=working_directory,
+    )
+    if resolved_profile.requires_workspace and not working_directory:
+        raise ValueError(
+            f"service_profile '{resolved_profile.id}' exige working_directory"
+        )
+    if spec is None:
+        return _prelaunch_failed_result(
             exit_code=2,
             error=f"Provider desconhecido: {provider_id}. Use list_providers.",
+            command=[],
+            reason=f"Provider desconhecido: {provider_id}",
+        )
+
+    effective_timeout, effective_idle_timeout = resolve_timeouts(
+        profile=resolved_profile,
+        provider_default_absolute_timeout_s=spec.default_timeout,
+        explicit_absolute_timeout_s=timeout,
+        explicit_idle_timeout_s=idle_timeout,
+    )
+    if effective_timeout is None:
+        raise ValueError(
+            f"service_profile '{resolved_profile.id}' não possui timeout absoluto efetivo"
         )
 
     if ssh_host:
@@ -615,12 +691,11 @@ def ask_provider(
         binary = resolve_binary(spec)
         if binary is None:
             candidates = ", ".join(spec.binary_candidates or (spec.binary,))
-            return RunResult(
-                provider=provider_id,
-                command=[spec.binary],
-                output="",
+            return _prelaunch_failed_result(
                 exit_code=127,
                 error=f"CLI não encontrada no PATH (tente: {candidates}).",
+                command=[spec.binary],
+                reason=f"CLI não encontrada no PATH: {candidates}",
             )
 
     if role is not None:
@@ -657,24 +732,49 @@ def ask_provider(
         skip_permissions=skip_permissions,
         extra_args=extra_args,
         prompt_via_stdin=codex_stdin,
-        timeout=timeout or spec.default_timeout,
+        timeout=effective_timeout,
     )
-    effective_timeout = timeout or spec.default_timeout
     stdin_text = effective_prompt if codex_stdin else None
 
     if ssh_host:
-        command = build_ssh_command(
-            ssh_host,
-            command,
-            working_directory=working_directory,
-            force_pty=spec.requires_pty,
+        try:
+            command = build_ssh_command(
+                ssh_host,
+                command,
+                working_directory=working_directory,
+                force_pty=spec.requires_pty,
+            )
+        except ValueError as exc:
+            return _prelaunch_failed_result(
+                exit_code=2,
+                error=str(exc),
+                command=["ssh"],
+                reason=str(exc),
+            transport="ssh",
+            )
+    lease_acquired_here = False
+    result: RunResult | None = None
+    if canonical_workspace is not None:
+        lease_acquired_here = workspace_lease.acquire_for_scope(
+            canonical_workspace,
+            effective_execution_id,
+            effective_attempt_id,
         )
+
+    if ssh_host:
         result = run_subprocess(
             provider_id,
             command,
             cwd=None,
             timeout=effective_timeout,
+            idle_timeout=effective_idle_timeout,
             input_text=stdin_text,
+            execution_id=effective_execution_id,
+            attempt_id=effective_attempt_id,
+            on_execution_update=on_execution_update,
+            execution_control=execution_control,
+            remote_execution=True,
+            service_profile=resolved_profile.id,
         )
     elif spec.requires_pty:
         result = run_with_pty(
@@ -682,6 +782,12 @@ def ask_provider(
             command,
             cwd=working_directory,
             timeout=effective_timeout,
+            idle_timeout=effective_idle_timeout,
+            execution_id=effective_execution_id,
+            attempt_id=effective_attempt_id,
+            on_execution_update=on_execution_update,
+            execution_control=execution_control,
+            service_profile=resolved_profile.id,
         )
     else:
         result = run_subprocess(
@@ -689,8 +795,28 @@ def ask_provider(
             command,
             cwd=working_directory,
             timeout=effective_timeout,
+            idle_timeout=effective_idle_timeout,
             input_text=stdin_text,
+            execution_id=effective_execution_id,
+            attempt_id=effective_attempt_id,
+            on_execution_update=on_execution_update,
+            execution_control=execution_control,
+            service_profile=resolved_profile.id,
         )
+
+    if (
+        canonical_workspace is not None
+        and lease_acquired_here
+        and not retain_workspace_lease
+    ):
+        released = workspace_lease.release_after_attempt(
+            canonical_workspace,
+            effective_execution_id,
+            effective_attempt_id,
+            execution_meta=result.execution,
+        )
+        if not released:
+            result.warnings.append(_lease_retained_warning())
 
     result.role = effective_role
     if model_warning:
@@ -718,7 +844,7 @@ def ask_provider(
         complexity = estimate_complexity(prompt)
         if complexity == "simple" and is_heavy_model(provider_id, effective_model):
             try:
-                lighter = recommend_for_task(prompt, task_type=None, top_n=1)
+                lighter = recommend_for_task(prompt, task_type=task_type, top_n=1)
                 alt = lighter["recomendacoes"][0]["onde"][0] if lighter["recomendacoes"] else None
                 tip = (
                     f" Alternativa mais barata: provider '{alt['provider']}' "
@@ -752,7 +878,7 @@ def ask_provider_verified(
     prompt: str,
     **kwargs,
 ) -> RunResult:
-    """ask_provider + verificador ("detector de mentiras").
+    """ask_provider + verificação de alegações do relatório.
 
     Fluxo:
       1. Executa a tarefa no provider.
@@ -766,56 +892,186 @@ def ask_provider_verified(
     from athena.verifier import MAX_FIX_ATTEMPTS, build_fix_prompt, verify_report
 
     working_directory = kwargs.get("working_directory")
-    result = ask_provider(provider_id, prompt, **kwargs)
+    effective_execution_id = kwargs.get("execution_id") or uuid.uuid4().hex
+    execution_control = kwargs.get("execution_control")
+    on_execution_update = kwargs.get("on_execution_update")
+    ssh_host = kwargs.get("ssh_host")
+    task_type = kwargs.get("task_type")
+    resolved_profile = resolve_service_profile(
+        explicit_profile_id=kwargs.get("service_profile"),
+        provider_id=provider_id,
+        task_type=task_type,
+        working_directory=working_directory,
+    )
+    canonical_workspace = (
+        workspace_lease.canonicalize_workspace(working_directory)
+        if working_directory
+        else None
+    )
+    current_attempt_id = kwargs.get("attempt_id") or uuid.uuid4().hex
+    if canonical_workspace is not None and workspace_lease.current_holder(canonical_workspace) is not None:
+        raise workspace_lease.WorkspaceLeaseError(
+            "Workspace já possui lease ativa; fluxo verified direto não assume lease externa."
+        )
+
+    retained_warning = (
+        "workspace_lease_retained_fail_closed: terminação da fase não foi "
+        "confirmada com segurança; lease mantida."
+    )
+
+    def _release_current(result_obj: RunResult, *, phase_name: str) -> None:
+        if canonical_workspace is None:
+            return
+        released = workspace_lease.release_after_attempt(
+            canonical_workspace,
+            effective_execution_id,
+            current_attempt_id,
+            execution_meta=result_obj.execution,
+        )
+        if not released:
+            result_obj.warnings.append(f"{phase_name}: {retained_warning}")
+
+    def _transfer_to(new_attempt_id: str, *, execution_meta: dict | None) -> None:
+        nonlocal current_attempt_id
+        if not workspace_lease.is_safe_attempt_end(
+            execution_meta,
+            expected_execution_id=effective_execution_id,
+            expected_attempt_id=current_attempt_id,
+        ):
+            raise workspace_lease.WorkspaceLeaseError(
+                "Transição de fase bloqueada (fail-closed): metadados da tentativa "
+                "anterior ausentes/divergentes ou terminação não confirmada."
+            )
+        if canonical_workspace is not None:
+            workspace_lease.transfer(
+                canonical_workspace,
+                effective_execution_id,
+                current_attempt_id,
+                new_attempt_id,
+                execution_meta=execution_meta,
+            )
+        current_attempt_id = new_attempt_id
+
+    ask_kwargs = dict(kwargs)
+    ask_kwargs["execution_id"] = effective_execution_id
+    ask_kwargs["attempt_id"] = current_attempt_id
+    ask_kwargs["retain_workspace_lease"] = True
+    result = ask_provider(provider_id, prompt, **ask_kwargs)
     if result.error or result.timed_out:
-        return result  # nada a verificar: a execução já falhou
+        _release_current(result, phase_name="executor")
+        return result
+
+    if ssh_host:
+        result.warnings.append(
+            "verification_unavailable_remote: verificação automática indisponível em execução SSH remota."
+        )
+        result.verdict = {
+            "verdadeiro": None,
+            "verificador": "skipped_remote",
+            "motivos": ["verification_unavailable_remote"],
+        }
+        _release_current(result, phase_name="executor")
+        return result
 
     history: list[dict] = []
     for attempt in range(1, MAX_FIX_ATTEMPTS + 1):
+        _transfer_to(uuid.uuid4().hex, execution_meta=result.execution)
         verdict = verify_report(
             prompt,
             result.output,
             working_directory=working_directory,
             executor_provider=provider_id,
+            execution_id=effective_execution_id,
+            attempt_id=current_attempt_id,
+            on_execution_update=on_execution_update,
+            execution_control=execution_control,
         )
         verdict.tentativas = attempt
+        verdict_state = (verdict.execution or {}).get("state")
+
+        if verdict_state == ExecutionState.CANCELLED.value:
+            history.append(verdict.to_dict())
+            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
+            result.verdict = {"verdadeiro": None, "historico": history}
+            result.execution = verdict.execution
+            result.exit_code = 130
+            result.timed_out = False
+            result.error = (verdict.execution or {}).get("termination_reason") or "verifier_cancelled"
+            _release_current(result, phase_name="verifier")
+            return result
+
+        if verdict_state == ExecutionState.TERMINATION_UNCONFIRMED.value:
+            history.append(verdict.to_dict())
+            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
+            result.verdict = {"verdadeiro": None, "historico": history}
+            result.execution = verdict.execution
+            result.exit_code = 125
+            result.timed_out = False
+            result.error = "verifier_termination_unconfirmed"
+            _release_current(result, phase_name="verifier")
+            return result
 
         if verdict.verdadeiro is None:
             history.append(verdict.to_dict())
             record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
+            result.execution = verdict.execution
             result.warnings.append(
                 f"Verificação indisponível ({verdict.motivos[0] if verdict.motivos else 'erro'}) "
                 "— relatório aceito sem checagem."
             )
+            _release_current(result, phase_name="verifier")
             break
+
         if verdict.verdadeiro:
             history.append(verdict.to_dict())
             record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
             result.verdict = {**verdict.to_dict(), "historico": history}
+            result.execution = verdict.execution
+            _release_current(result, phase_name="verifier")
             return result
 
         if attempt < MAX_FIX_ATTEMPTS:
             history.append(verdict.to_dict())
+            if not resolved_profile.allow_fallback_on_error:
+                verdict.escalado = True
+                history[-1] = verdict.to_dict()
+                record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
+                result.verdict = {**verdict.to_dict(), "historico": history}
+                result.execution = verdict.execution
+                result.warnings.append(
+                    "Retry corretivo automático bloqueado pelo service_profile "
+                    f"'{resolved_profile.id}' (allow_fallback_on_error=false)."
+                )
+                _release_current(result, phase_name="verifier")
+                return result
             record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
             result.warnings.append(
                 f"Relatório marcado FALSO pelo verificador {verdict.verificador} "
                 f"(tentativa {attempt}); reenviado ao executor para correção."
             )
-            fix_prompt = build_fix_prompt(prompt, verdict)
-            result = ask_provider(provider_id, fix_prompt, **kwargs)
+            _transfer_to(uuid.uuid4().hex, execution_meta=verdict.execution)
+            retry_kwargs = dict(kwargs)
+            retry_kwargs["execution_id"] = effective_execution_id
+            retry_kwargs["attempt_id"] = current_attempt_id
+            retry_kwargs["retain_workspace_lease"] = True
+            result = ask_provider(provider_id, build_fix_prompt(prompt, verdict), **retry_kwargs)
             if result.error or result.timed_out:
+                _release_current(result, phase_name="executor")
                 break
-        else:
-            verdict.escalado = True
-            history.append(verdict.to_dict())
-            record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
-            result.verdict = {**verdict.to_dict(), "historico": history}
-            result.warnings.append(
-                "ESCALADO: relatório marcado FALSO 2 vezes pelo verificador. "
-                "O orquestrador deve decidir: trocar de CLI, dividir a tarefa ou abortar. "
-                f"Motivos: {'; '.join(verdict.motivos)}"
-            )
-            return result
+            continue
+
+        verdict.escalado = True
+        history.append(verdict.to_dict())
+        record_verdict(provider_id, verdict, task_excerpt=prompt, project=working_directory or "")
+        result.verdict = {**verdict.to_dict(), "historico": history}
+        result.execution = verdict.execution
+        result.warnings.append(
+            "ESCALADO: relatório marcado FALSO 2 vezes pelo verificador. "
+            "O orquestrador deve decidir: trocar de CLI, dividir a tarefa ou abortar. "
+            f"Motivos: {'; '.join(verdict.motivos)}"
+        )
+        _release_current(result, phase_name="verifier")
+        return result
 
     if result.verdict is None and history:
         result.verdict = {"verdadeiro": None, "historico": history}

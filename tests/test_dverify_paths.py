@@ -12,12 +12,14 @@ def test_repo_root_paths_accepted(tmp_path):
     (tmp_path / "projetos" / "site" / "index.html").write_text("<html></html>")
 
     report = "Criei projetos/site/index.html com a landing completa."
-    missing = dverify.find_missing_created_files(report, str(sub))
+    missing, _, timed_out = dverify.find_missing_created_files(report, str(sub))
     assert missing == []
+    assert timed_out is False
 
 
 def test_truly_missing_still_flagged(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     report = "Criei projetos/site/fantasma.html e implementei tudo."
-    missing = dverify.find_missing_created_files(report, str(tmp_path))
+    missing, _, timed_out = dverify.find_missing_created_files(report, str(tmp_path))
     assert "projetos/site/fantasma.html" in missing
+    assert timed_out is False
