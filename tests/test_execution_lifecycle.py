@@ -83,6 +83,7 @@ def _same_pgid_parent_script(pidfile: str, child_exit: int = 0, parent_exit: int
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="setsid and SIGKILL are POSIX-only")
 def test_child_that_refuses_to_die_is_reclaimed_after_timeout():
     """Parent (the direct child of run_subprocess) spawns a grandchild that
     ignores SIGTERM and detaches, then blocks well past a short timeout.
@@ -818,7 +819,7 @@ def test_run_subprocess_post_launch_oserror_remote_transitions_via_terminating(m
     assert result.execution["process_created"] is True
     assert result.execution["state"] == "TERMINATION_UNCONFIRMED"
     assert result.execution["direct_process_terminated_confirmed"] is True
-    assert result.execution["process_tree_terminated_confirmed"] is True
+    assert result.execution["process_tree_terminated_confirmed"] is (sys.platform != "win32")
     assert result.execution["remote_termination_confirmed"] is False
     assert result.execution["history"][-2]["to_state"] == "TERMINATING"
     assert result.execution["history"][-1]["to_state"] == "TERMINATION_UNCONFIRMED"
@@ -850,7 +851,7 @@ def test_run_subprocess_post_launch_oserror_local_finishes_failed_with_confirmat
     assert result.execution["process_created"] is True
     assert result.execution["state"] == "FAILED"
     assert result.execution["direct_process_terminated_confirmed"] is True
-    assert result.execution["process_tree_terminated_confirmed"] is True
+    assert result.execution["process_tree_terminated_confirmed"] is (sys.platform != "win32")
     assert result.execution["history"][-2]["to_state"] == "TERMINATING"
     assert result.execution["history"][-1]["to_state"] == "FAILED"
     assert _pid_alive(int(result.execution["pid"])) is False
@@ -1038,6 +1039,7 @@ def test_remote_execution_prelaunch_missing_command_has_no_remote_session():
     assert result.execution["remote_termination_confirmed"] is None
 
 
+@pytest.mark.skipif(not HAS_PTY, reason="PTY creation is POSIX-only in this contract")
 def test_run_with_pty_creates_exactly_one_pty_per_run(monkeypatch):
     """run_with_pty() must call pty.openpty() exactly once per invocation --
     a second call would leak an unused master/slave fd pair (or, worse,

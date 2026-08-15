@@ -225,10 +225,11 @@ def test_deterministic_verify_does_not_start_checks_after_budget_expires(tmp_pat
         )
 
     monkeypatch.setattr(dverify, "run_subprocess", fake_run)
-    budget = DeadlineBudget(0.001)
-    # consume budget before deterministic loop
-    import time
-    time.sleep(0.01)
+    monotonic = {"now": 100.0}
+    monkeypatch.setattr("athena.execution.time.monotonic", lambda: monotonic["now"])
+    budget = DeadlineBudget(1.0)
+    # Expire deterministically without depending on the host clock resolution.
+    monotonic["now"] = 101.1
     verdict = dverify.deterministic_verify(
         "Rodei pytest e ruff check .",
         str(tmp_path),
