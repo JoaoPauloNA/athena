@@ -8,6 +8,8 @@ The server speaks MCP over stdio (`python -m athena.mcp_server`). All responses 
 
 `run_combo` and `ask_provider` are the two long-running tools. For each call the server auto-generates an `execution_id` (or accepts one you pass in `arguments.execution_id`, as a non-empty string) and streams lifecycle updates into an in-memory registry as the call progresses. That `execution_id` is echoed at the top level of the response and can be used with `get_execution`, `list_executions` and `cancel_execution`. The registry is bounded (256 executions / 64 attempts each by default) and sanitized — no prompts, reports or credentials are stored, only identity/timing/state metadata (see [Architecture — Execution lifecycle](architecture.md#execution-lifecycle)).
 
+If the separate compatible Moiras package is installed and the server starts with `ATHENA_MOIRAS_SHADOW=1` (also accepts `true`, `yes`, `on`), lifecycle updates are additionally submitted to a bounded, coalescing shadow sampler. This opt-in is observation-only and does not affect any tool's timeout, cancellation, fallback, lease or authorization behavior.
+
 Numeric timeout parameters (`timeout`, `overall_timeout`, `verification_timeout`, `idle_timeout`) must be real numbers greater than 0 (booleans are rejected); `idle_timeout` must not exceed the effective absolute timeout in force for the call.
 
 ## `list_providers`
@@ -117,7 +119,9 @@ Looks up a registered execution by `execution_id` or `request_id` (the original 
 | `execution_id` | string | |
 | `request_id` | string \| number | |
 
-**Response:** `{"execution": null}` if not found, otherwise the sanitized execution record (state, attempts, timestamps — no prompts/reports).
+**Response:** `{"execution": null}` if not found, otherwise the sanitized execution record (state, attempts, timestamps — no prompts/reports). With `ATHENA_MOIRAS_SHADOW` enabled, the record also contains `execution.moiras_shadow` for the current attempt: either `null` while no sample is ready or an advisory with `status`, `reason`, `classification`, `evidence_codes`, `affects_control_flow=false`, `executed=false`, and `mode="shadow"`. The value is asynchronous, process-local and not persisted; `list_executions` is not enriched with it.
+
+The adapter accepts Moiras `0.1.x` / schema `1.0`. Normal Athena lifecycle data can currently produce `REAL_PROGRESS`, `ACTIVITY_WITHOUT_PROGRESS`, `PROBABLE_INACTIVITY` and `INDETERMINATE`. `LEGITIMATE_WAIT` and `EXTERNAL_BLOCK` require explicit wait/block flags that the standard Athena lifecycle does not yet produce.
 
 ## `list_executions`
 

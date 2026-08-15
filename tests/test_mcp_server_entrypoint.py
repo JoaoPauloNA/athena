@@ -944,3 +944,120 @@ def test_mcp_callback_tracks_executor_and_verifier_attempts_and_finalizes_at_end
     assert entry["attempt_order"] == ["att-exec", "att-ver"]
     assert entry["state"] == "COMPLETED"
     assert entry["finalized"] is True
+
+
+def test_hashed_request_id_resolves_registered_execution_and_finalizes(monkeypatch):
+    registry = ExecutionRegistry()
+    monkeypatch.setattr(mcp_server, "EXECUTION_REGISTRY", registry)
+    request_id = "a1b2c3d4e5f6g7h8i9j0"
+    params = {"name": "ask_provider", "arguments": {"provider": "p", "prompt": "x"}}
+
+    execution_id = mcp_server._register_execution_if_needed(request_id, params)
+
+    assert execution_id is not None
+    record = registry.get(request_id=request_id)
+    assert record is not None
+    assert record["request_id"].startswith("sha256:")
+    resolved = mcp_server._resolve_registered_long_execution_id(
+        request_id, "ask_provider", params["arguments"]
+    )
+    assert resolved == execution_id
+    mcp_server._finalize_execution(resolved)
+    assert registry.get(request_id=request_id)["finalized"] is True
+
+
+def test_more_than_registry_capacity_hashed_requests_can_finalize_and_evict(monkeypatch):
+    registry = ExecutionRegistry(max_records=256)
+    monkeypatch.setattr(mcp_server, "EXECUTION_REGISTRY", registry)
+
+    for index in range(300):
+        request_id = f"request-{index:04d}-" + ("x" * 100)
+        params = {
+            "name": "ask_provider",
+            "arguments": {"provider": "p", "prompt": "x"},
+        }
+        execution_id = mcp_server._register_execution_if_needed(request_id, params)
+        assert execution_id is not None
+        resolved = mcp_server._resolve_registered_long_execution_id(
+            request_id, "ask_provider", params["arguments"]
+        )
+        assert resolved == execution_id
+        mcp_server._finalize_execution(resolved)
+
+    latest = registry.get(request_id="request-0299-" + ("x" * 100))
+    assert latest is not None
+    assert latest["finalized"] is True
+
+
+def test_mcp_lifecycle_callback_fans_out_to_registry_and_nonblocking_moiras_submit(
+    monkeypatch,
+):
+    registry = ExecutionRegistry()
+    submitted = []
+
+    class FakeObserver:
+        enabled = True
+
+        def submit(self, snapshot):
+            submitted.append(snapshot)
+
+    monkeypatch.setattr(mcp_server, "EXECUTION_REGISTRY", registry)
+    monkeypatch.setattr(mcp_server, "MOIRAS_SHADOW_OBSERVER", FakeObserver())
+    params = {"name": "ask_provider", "arguments": {"provider": "p", "prompt": "x"}}
+    execution_id = mcp_server._register_execution_if_needed("request-1", params)
+    snapshot = {
+        "execution_id": execution_id,
+        "attempt_id": "attempt-1",
+        "state": "RUNNING",
+        "process_created": True,
+    }
+
+    params["arguments"]["on_execution_update"](snapshot)
+
+    record = registry.get(execution_id=execution_id)
+    assert record is not None
+    assert record["current_attempt_id"] == "attempt-1"
+    assert submitted == [snapshot]
+
+
+def test_get_execution_exposes_only_attempt_scoped_inert_moiras_advisory(monkeypatch):
+    from athena.moiras_adapter import (
+        MoirasAdapterReason,
+        MoirasAdapterStatus,
+        MoirasShadowAdvisory,
+    )
+
+    registry = ExecutionRegistry()
+    registry.create(execution_id="execution-1", request_id="request-1", tool="ask_provider")
+    registry.update_attempt(
+        "execution-1",
+        {
+            "execution_id": "execution-1",
+            "attempt_id": "attempt-1",
+            "state": "RUNNING",
+            "process_created": True,
+        },
+    )
+    advisory = MoirasShadowAdvisory(
+        status=MoirasAdapterStatus.OBSERVED,
+        reason=MoirasAdapterReason.CLASSIFICATION_AVAILABLE,
+        classification="PROBABLE_INACTIVITY",
+        evidence_codes=("IDLE_THRESHOLD_EXCEEDED",),
+    )
+
+    class FakeObserver:
+        enabled = True
+
+        def advisory_for(self, execution_id, attempt_id):
+            assert (execution_id, attempt_id) == ("execution-1", "attempt-1")
+            return advisory
+
+    monkeypatch.setattr(mcp_server, "EXECUTION_REGISTRY", registry)
+    monkeypatch.setattr(mcp_server, "MOIRAS_SHADOW_OBSERVER", FakeObserver())
+
+    response = mcp_server._handle_get_execution({"execution_id": "execution-1"})
+    payload = json.loads(response["content"][0]["text"])
+    shadow = payload["execution"]["moiras_shadow"]
+    assert shadow["classification"] == "PROBABLE_INACTIVITY"
+    assert shadow["affects_control_flow"] is False
+    assert shadow["executed"] is False

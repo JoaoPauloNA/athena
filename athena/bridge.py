@@ -20,9 +20,9 @@ if HAS_PTY:
 
 # POSIX: a process launched with start_new_session=True becomes the leader of
 # its own session/process group (pgid == pid), so signalling that pgid reaches
-# the whole tree it spawned *unless* a descendant escapes via its own
-# os.setsid()/setpgid() call (a well-known, undetectable-from-outside escape
-# hatch — documented, not something this module tries to close).
+# the owned group it spawned *unless* a descendant escapes via its own
+# os.setsid()/setpgid() call. A process-table snapshot can detect some current
+# escapes positively, but cannot prove their absence across races/reparenting.
 HAS_PROCESS_GROUPS = sys.platform != "win32"
 
 # Bounded grace window between SIGTERM and SIGKILL when tearing down a
@@ -101,6 +101,52 @@ def _process_group_is_empty(pgid: int) -> bool:
     return False
 
 
+def _escaped_descendants(root_pid: int, owned_pgid: int) -> set[int]:
+    """Best-effort discovery of descendants that left the owned POSIX group.
+
+    This is a conservative signal, not a proof that no escape occurred: a
+    descendant can exit/reparent between observations.  A positive result is
+    nevertheless enough to forbid confirming even Athena's owned scope.
+    """
+
+    if not HAS_PROCESS_GROUPS:
+        return set()
+    try:
+        completed = subprocess.run(
+            ["ps", "-axo", "pid=,ppid=,pgid="],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if completed.returncode != 0:
+        return set()
+    rows: list[tuple[int, int, int]] = []
+    for line in completed.stdout.splitlines():
+        pieces = line.split()
+        if len(pieces) != 3:
+            continue
+        try:
+            rows.append((int(pieces[0]), int(pieces[1]), int(pieces[2])))
+        except ValueError:
+            continue
+    descendants = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent_pid, _ in rows:
+            if parent_pid in descendants and pid not in descendants:
+                descendants.add(pid)
+                changed = True
+    return {
+        pid
+        for pid, _parent_pid, process_group in rows
+        if pid != root_pid and pid in descendants and process_group != owned_pgid
+    }
+
+
 def terminate_process_tree(
     proc: subprocess.Popen,
     pgid: int | None,
@@ -115,11 +161,16 @@ def terminate_process_tree(
     a second cancellation request racing the first) is a no-op rather than
     an error.
 
-    Returns (direct_process_terminated_confirmed, process_tree_terminated_confirmed).
-    On Windows (no process groups), only the direct process is controlled/
-    confirmed; tree confirmation is never claimed there.
+    Returns (direct_process_terminated_confirmed, owned_scope_terminated_confirmed).
+    The second value is carried in the legacy 0.x metadata field
+    ``process_tree_terminated_confirmed`` but only proves Athena's owned
+    process group plus the best-effort escape observation described above.
+    On Windows, only the direct process is controlled/confirmed.
     """
     use_pgroup = HAS_PROCESS_GROUPS and pgid is not None
+    escaped_descendants = (
+        _escaped_descendants(proc.pid, pgid) if use_pgroup and proc.poll() is None else set()
+    )
 
     if use_pgroup:
         try:
@@ -164,7 +215,7 @@ def terminate_process_tree(
     direct_confirmed = proc.poll() is not None
 
     tree_confirmed = False
-    if use_pgroup and direct_confirmed:
+    if use_pgroup and direct_confirmed and not escaped_descendants:
         tree_confirmed = _process_group_is_empty(pgid)
 
     return direct_confirmed, tree_confirmed

@@ -84,6 +84,7 @@ def _build_stages() -> list[StageSpec]:
                 "tests/test_dverify.py",
                 "tests/test_dverify_paths.py",
                 "tests/test_moiras_adapter.py",
+                "tests/test_moiras_adapter_integration.py",
             ),
             test_like=False,
         ),

@@ -23,7 +23,13 @@ O Athena-MCP é software alpha, feito para compartilhamento local controlado, n�
    ```bash
    python harness/p0_gate.py
    ```
-   Esta etapa gerencia seu próprio `ATHENA_DATA_DIR` isolado (um diretório temporário) e define `ATHENA_SKIP_AUTODISCOVERY=1` internamente — não precisa configurar env manualmente aqui. Ela re-executa um `ruff check` com escopo restrito mais os arquivos de teste de ciclo de vida de execução, router, lease de workspace, registro/cancel/EOF do MCP, construtor SSH, service_profile, privacidade/confiabilidade e adaptador Moiras opcional, cada um como um estágio separado, e grava um relatório JSON em `harness/results/p0-gate-<timestamp>.json` (ou no caminho passado via `--output`).
+   Esta etapa gerencia seu próprio `ATHENA_DATA_DIR` isolado (um diretório temporário) e define `ATHENA_SKIP_AUTODISCOVERY=1` internamente — não precisa configurar env manualmente aqui. Ela re-executa um `ruff check` com escopo restrito mais os arquivos de teste de ciclo de vida de execução, router, lease de workspace, registro/cancel/EOF do MCP, construtor SSH, service_profile, privacidade/confiabilidade e testes unitários do adaptador Moiras opcional, cada um como um estágio separado, e grava um relatório JSON em `harness/results/p0-gate-<timestamp>.json` (ou no caminho passado via `--output`).
+5. Ao revisar o contrato real opcional com Moiras, instale o extra e rode separadamente os testes entre repositórios:
+   ```bash
+   pip install -e '.[moiras]'
+   pytest -q tests/test_moiras_adapter.py tests/test_moiras_adapter_integration.py
+   ```
+   Essa checagem adicional usa a dependência Moiras e, portanto, não pertence ao gate offline independente de Moiras. A CI executa um job de contrato equivalente a partir de checkouts separados do Athena e do Moiras.
 
 ## Critérios PASS / FAIL
 
@@ -38,4 +44,5 @@ O Athena-MCP é software alpha, feito para compartilhamento local controlado, n�
 - `support_classification` (`posix: LOCAL_CONTROLLED_ONLY`, `windows: NOT_GUARANTEED`, mais qual dos dois é `effective` na máquina que rodou o gate) reflete **cobertura da suíte de testes**, não uma sondagem de capacidade ao vivo: POSIX é `LOCAL_CONTROLLED_ONLY` porque os testes de ciclo de vida da árvore de processos rodam e são verificados só lá; Windows é `NOT_GUARANTEED` pelo mesmo motivo — a classificação é sobre o que é testado, não uma alegação de que o Windows é conhecido por falhar.
 - Passar no gate é uma pré-condição para compartilhar localmente, não um substituto para os avisos em [Segurança e validação](../../README.pt-BR.md#segurança-e-validação) e [SECURITY.md](../../SECURITY.md). `skip_permissions`, o dashboard sem autenticação, a falta de confirmação de terminação remota via SSH e o lease de workspace intraprocesso continuam valendo independentemente do status do gate.
 - O gate é sintético e offline por construção — nenhum subprocesso real de CLI é exercitado. Ele valida a *lógica* de ciclo de vida de execução, router, lease, registro, construtor SSH e verificador, não uma execução real de ponta a ponta contra Codex/Claude Code/Cursor/etc.
-- O adaptador opcional Moiras não é ativado por este gate nem pelo servidor MCP. Seus testes unitários usam um módulo injetado compatível com o contrato; um smoke test entre repositórios exige o checkout/pacote Moiras separado. Mesmo assim, o resultado é apenas observacional e nunca participa do caminho de controle PASS/FAIL acima.
+- O gate não define `ATHENA_MOIRAS_SHADOW`; o servidor MCP só ativa o sampler por opt-in explícito na inicialização. Os testes unitários usam um contrato compatível injetado, enquanto o teste de integração separado exige Moiras `0.1.x` / schema `1.0`. Ativado ou testado, o advisory continua somente observacional e nunca participa do caminho de controle PASS/FAIL acima.
+- Em POSIX, o tratamento de escapes por `setsid()`/`setpgid()` é positivo e conservador: enxergar um descendente escapado bloqueia a confirmação da árvore, mas não enxergar não prova contenção universal. A classificação `LOCAL_CONTROLLED_ONLY` continua intencional.

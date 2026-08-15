@@ -884,6 +884,81 @@ def test_indeterminate_exception_retains_lease(monkeypatch, tmp_path):
     assert workspace_lease.current_holder(ws) is not None
 
 
+def test_exception_after_authenticated_terminal_snapshot_releases_lease(monkeypatch, tmp_path):
+    ws = str(tmp_path)
+    monkeypatch.setattr(router, "get_combo", lambda cid: _combo())
+
+    class LateFailure(Exception):
+        pass
+
+    def fake_ask(provider_id, prompt, **kw):
+        kw["on_execution_update"](
+            _bind_meta(
+                _exec_meta("COMPLETED", direct_confirmed=True, tree_confirmed=True, pgid=123),
+                kw["execution_id"],
+                kw["attempt_id"],
+            )
+        )
+        raise LateFailure("after terminal lifecycle update")
+
+    monkeypatch.setattr(router, "ask_provider", fake_ask)
+    with pytest.raises(LateFailure):
+        router.run_combo("t", "prompt", working_directory=ws)
+    assert workspace_lease.current_holder(ws) is None
+
+
+def test_exception_after_terminal_snapshot_for_other_attempt_retains_lease(monkeypatch, tmp_path):
+    ws = str(tmp_path)
+    monkeypatch.setattr(router, "get_combo", lambda cid: _combo())
+
+    class LateFailure(Exception):
+        pass
+
+    def fake_ask(provider_id, prompt, **kw):
+        kw["on_execution_update"](
+            _bind_meta(
+                _exec_meta("COMPLETED", direct_confirmed=True, tree_confirmed=True, pgid=123),
+                kw["execution_id"],
+                "different-attempt",
+            )
+        )
+        raise LateFailure("untrusted terminal lifecycle update")
+
+    monkeypatch.setattr(router, "ask_provider", fake_ask)
+    with pytest.raises(LateFailure):
+        router.run_combo("t", "prompt", working_directory=ws)
+    assert workspace_lease.current_holder(ws) is not None
+
+
+def test_verifier_exception_after_authenticated_terminal_snapshot_releases_lease(
+    monkeypatch, tmp_path
+):
+    ws = str(tmp_path)
+    monkeypatch.setattr(router, "get_combo", lambda cid: _combo())
+
+    class LateVerifierFailure(Exception):
+        pass
+
+    def fake_ask(provider_id, prompt, **kw):
+        return _ok_with_execution(provider_id, kw["execution_id"], kw["attempt_id"])
+
+    def fake_verify(*_args, **kw):
+        kw["on_execution_update"](
+            _bind_meta(
+                _exec_meta("COMPLETED", direct_confirmed=True, tree_confirmed=True, pgid=123),
+                kw["execution_id"],
+                kw["attempt_id"],
+            )
+        )
+        raise LateVerifierFailure("after terminal verifier lifecycle update")
+
+    monkeypatch.setattr(router, "ask_provider", fake_ask)
+    monkeypatch.setattr("athena.verifier.verify_report", fake_verify)
+    with pytest.raises(LateVerifierFailure):
+        router.run_combo("t", "prompt", working_directory=ws, verify=True)
+    assert workspace_lease.current_holder(ws) is None
+
+
 def test_metadata_from_other_attempt_is_rejected(monkeypatch, tmp_path):
     ws = str(tmp_path)
     monkeypatch.setattr(router, "get_combo", lambda cid: _combo())

@@ -5,6 +5,7 @@ import math
 import time
 import uuid
 from collections.abc import Callable
+from copy import deepcopy
 
 from athena import workspace_lease
 from athena.bridge import RunResult
@@ -325,6 +326,24 @@ def run_combo(
             execution_meta=execution_meta,
         )
 
+    def _capture_execution_update(attempt_snapshot: dict) -> None:
+        """Keep a trusted local copy before forwarding the lifecycle event."""
+        nonlocal last_execution_meta
+        if isinstance(attempt_snapshot, dict):
+            last_execution_meta = deepcopy(attempt_snapshot)
+        if on_execution_update is not None:
+            on_execution_update(attempt_snapshot)
+
+    def _release_after_authenticated_terminal_snapshot() -> None:
+        """Release after an exception only when the current attempt is proven over."""
+        safe, _ = _is_safe_terminal_metadata(
+            last_execution_meta,
+            expected_execution_id=execution_lease_id if canonical_workspace else None,
+            expected_attempt_id=current_attempt_lease_id if canonical_workspace else None,
+        )
+        if safe:
+            _lease_release(last_execution_meta)
+
     for step_index, step in enumerate(combo.chain):
         if overall_budget is not None and overall_budget.expired:
             _raise_combo_deadline()
@@ -353,25 +372,33 @@ def run_combo(
                     provider_idle_timeout = provider_timeout
 
             current_attempt_started = True
-            result = ask_provider(
-                provider_id,
-                prompt,
-                role=step.role,
-                use_default_role=False,
-                model=step.model,
-                working_directory=working_directory,
-                timeout=provider_timeout,
-                idle_timeout=provider_idle_timeout,
-                skip_permissions=step.skip_permissions,
-                extra_args=step.extra_args,
-                heavy_model_authorized=heavy_model_authorized,
-                task_type=task_type,
-                service_profile=resolved_profile.id,
-                execution_id=execution_lease_id,
-                attempt_id=current_attempt_lease_id,
-                on_execution_update=on_execution_update,
-                execution_control=execution_control,
-            )
+            try:
+                result = ask_provider(
+                    provider_id,
+                    prompt,
+                    role=step.role,
+                    use_default_role=False,
+                    model=step.model,
+                    working_directory=working_directory,
+                    timeout=provider_timeout,
+                    idle_timeout=provider_idle_timeout,
+                    skip_permissions=step.skip_permissions,
+                    extra_args=step.extra_args,
+                    heavy_model_authorized=heavy_model_authorized,
+                    task_type=task_type,
+                    service_profile=resolved_profile.id,
+                    execution_id=execution_lease_id,
+                    attempt_id=current_attempt_lease_id,
+                    on_execution_update=_capture_execution_update,
+                    execution_control=execution_control,
+                )
+            except Exception:
+                # Never release merely because Python unwound.  A late
+                # exception (for example telemetry after process exit) may
+                # release only through the same authenticated terminal gate
+                # used by normal paths; indeterminate failures remain held.
+                _release_after_authenticated_terminal_snapshot()
+                raise
             last_execution_meta = result.execution
 
             if (
@@ -420,11 +447,16 @@ def run_combo(
                     if overall_budget is not None and overall_budget.expired:
                         _raise_combo_deadline()
                     current_attempt_started = True
-                    verdict = verify_report(
-                        prompt,
-                        result.output,
-                        **verify_kwargs,
-                    )
+                    verify_kwargs["on_execution_update"] = _capture_execution_update
+                    try:
+                        verdict = verify_report(
+                            prompt,
+                            result.output,
+                            **verify_kwargs,
+                        )
+                    except Exception:
+                        _release_after_authenticated_terminal_snapshot()
+                        raise
                     if canonical_workspace is not None and verdict.execution is None:
                         raise FallbackBlocked(
                             f"Fase de verificação sem metadados em '{combo_id}': "

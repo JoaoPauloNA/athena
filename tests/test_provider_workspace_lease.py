@@ -136,6 +136,33 @@ def test_direct_ask_release_policy_confirmed_vs_unconfirmed_and_prelaunch(monkey
     assert workspace_lease.current_holder(ws) is None
 
 
+def test_usage_oserror_is_best_effort_after_valid_result(monkeypatch, tmp_path):
+    _setup_provider(monkeypatch)
+    ws = str(tmp_path)
+
+    monkeypatch.setattr(
+        providers_module,
+        "run_subprocess",
+        lambda provider, command, **kwargs: RunResult(
+            provider=provider,
+            command=command,
+            output="ok",
+            exit_code=0,
+            execution=_meta(kwargs["execution_id"], kwargs["attempt_id"], "COMPLETED"),
+        ),
+    )
+
+    def fail_usage(*_args, **_kwargs):
+        raise OSError("synthetic usage storage unavailable")
+
+    monkeypatch.setattr(providers_module, "record_usage", fail_usage)
+    result = providers_module.ask_provider("synthetic", "prompt", working_directory=ws)
+
+    assert result.exit_code == 0
+    assert "usage_telemetry_unavailable" in result.warnings
+    assert workspace_lease.current_holder(ws) is None
+
+
 def test_ask_provider_reentrant_router_holder_not_released(monkeypatch, tmp_path):
     _setup_provider(monkeypatch)
     ws = str(tmp_path)

@@ -23,7 +23,13 @@ Athena-MCP is alpha software built for controlled local sharing, not public or u
    ```bash
    python harness/p0_gate.py
    ```
-   This step manages its own isolated `ATHENA_DATA_DIR` (a temporary directory) and sets `ATHENA_SKIP_AUTODISCOVERY=1` internally — no manual env setup needed here. It re-runs a scoped `ruff check` plus the execution-lifecycle, router, workspace-lease, MCP-registry/cancel/EOF, SSH-builder, service-profile, privacy/reliability and optional-Moiras-adapter test files as separate stages, and writes a JSON report to `harness/results/p0-gate-<timestamp>.json` (or the path given via `--output`).
+   This step manages its own isolated `ATHENA_DATA_DIR` (a temporary directory) and sets `ATHENA_SKIP_AUTODISCOVERY=1` internally — no manual env setup needed here. It re-runs a scoped `ruff check` plus the execution-lifecycle, router, workspace-lease, MCP-registry/cancel/EOF, SSH-builder, service-profile, privacy/reliability and optional-Moiras-adapter unit test files as separate stages, and writes a JSON report to `harness/results/p0-gate-<timestamp>.json` (or the path given via `--output`).
+5. When reviewing the optional real Moiras contract, install the optional extra and run the cross-repository tests separately:
+   ```bash
+   pip install -e '.[moiras]'
+   pytest -q tests/test_moiras_adapter.py tests/test_moiras_adapter_integration.py
+   ```
+   This additional check uses the Moiras dependency and is therefore not part of the Moiras-independent offline gate. CI performs an equivalent contract job from separate Athena and Moiras checkouts.
 
 ## PASS / FAIL criteria
 
@@ -38,4 +44,5 @@ Athena-MCP is alpha software built for controlled local sharing, not public or u
 - `support_classification` (`posix: LOCAL_CONTROLLED_ONLY`, `windows: NOT_GUARANTEED`, plus which one is `effective` on the host that ran the gate) reflects **test-suite coverage**, not a live capability probe: POSIX is `LOCAL_CONTROLLED_ONLY` because process-tree lifecycle tests run and are asserted only there; Windows is `NOT_GUARANTEED` for the same reason — the classification is about what is tested, not a claim that Windows is known to fail.
 - Passing the gate is a precondition for sharing locally, not a substitute for the warnings in [Safety and validation](../../README.md#safety-and-validation) and [SECURITY.md](../../SECURITY.md). `skip_permissions`, the unauthenticated dashboard, SSH's lack of remote-termination confirmation, and the in-process-only workspace lease all still apply regardless of gate status.
 - The gate is synthetic and offline by construction — no real CLI subprocess is exercised. It validates the execution-lifecycle, router, lease, registry, SSH-builder and verifier *logic*, not a live end-to-end run against Codex/Claude Code/Cursor/etc.
-- The optional Moiras adapter is not enabled by this gate or by the MCP server. Its unit tests use an injected contract-compatible module; a cross-repository smoke test additionally requires the separate Moiras checkout/package. Even then, the result is observation-only and never part of the PASS/FAIL control path above.
+- The gate does not set `ATHENA_MOIRAS_SHADOW`; the MCP server activates the sampler only through explicit opt-in at startup. Adapter unit tests use an injected compatible contract, while the separate integration test requires Moiras `0.1.x` / schema `1.0`. Whether enabled or tested, its advisory remains observation-only and never participates in the PASS/FAIL control path above.
+- On POSIX, `setsid()`/`setpgid()` escape handling is positive and conservative: seeing an escaped descendant blocks tree confirmation, but not seeing one is not proof of universal containment. The `LOCAL_CONTROLLED_ONLY` classification remains intentional.

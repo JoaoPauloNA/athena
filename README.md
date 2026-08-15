@@ -42,7 +42,7 @@ Instead of betting on one agent, Athena:
 | 🔄 **Combos with failover** | Chains of providers with retries, per-step models and timeout policies — fallback only proceeds when the service profile allows it and the previous attempt's termination is confirmed |
 | 📜 **10-topic report contract** | Executors return lean structured reports — the orchestrator's context stays clean |
 | 🧭 **Execution lifecycle & control** | Every long-running call gets an `execution_id` with an explicit state machine, idle/absolute timeouts, and idempotent cancellation via `cancel_execution` |
-| 🕯️ **Optional [Moiras](https://github.com/JoaoPauloNA/moiras) shadow observer** | A disabled-by-default adapter can translate allowlisted lifecycle updates into inert Moiras temporal classifications; Athena never reads them to control timeout, cancellation, fallback, lease, or authorization |
+| 🕯️ **Optional [Moiras](https://github.com/JoaoPauloNA/moiras) shadow observer** | `ATHENA_MOIRAS_SHADOW=1` enables a coalescing background sampler and exposes its inert advisory through `get_execution`; Athena never reads it to control timeout, cancellation, fallback, lease, or authorization |
 
 ## Quick start
 
@@ -51,6 +51,13 @@ git clone https://github.com/JoaoPauloNA/athena.git
 cd athena
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
+```
+
+Optional Moiras shadow observation requires the separate compatible package and an explicit server-start opt-in:
+
+```bash
+pip install -e '.[moiras]'
+ATHENA_MOIRAS_SHADOW=1 python -m athena.mcp_server
 ```
 
 Run the dashboard:
@@ -129,11 +136,11 @@ Both layers only judge what the report itself makes checkable — cited commands
 ## Limitations
 
 - **Alpha, local-sharing status** — not hardened for public or multi-tenant exposure.
-- **Process-group cleanup is covered on POSIX (macOS/Linux)** for descendants that remain in Athena's owned process group. A descendant that deliberately escapes with `setsid()`/`setpgid()` remains indeterminate. On Windows, Athena controls the direct child process only; the wider process tree is classified `NOT_GUARANTEED` on timeout/cancel.
+- **Process-group cleanup is covered on POSIX (macOS/Linux)** for descendants that remain in Athena's owned process group. During teardown Athena conservatively looks for currently visible descendants that escaped through `setsid()`/`setpgid()` and refuses tree confirmation when it finds one; failure to observe an escape is not a universal proof that none occurred. On Windows, Athena controls the direct child process only; the wider process tree is classified `NOT_GUARANTEED` on timeout/cancel.
 - **The workspace lease is in-process only** — it serializes concurrent attempts inside one Athena process and gives no protection across multiple worker processes or hosts sharing a filesystem.
 - **Fallback/retry is conditional, not automatic** — it depends on the service profile's policy for the failure kind (error vs. timeout) and requires the previous attempt's termination to be positively confirmed. The `authenticated_external` and `unknown` profiles never fall back automatically.
 - **Model ratings are a local cache, not a live feed** — Athena does not fetch or refresh leaderboard data on its own; refreshing is an external, opt-in step.
-- **Moiras is optional and observation-only** — the MCP server does not enable it automatically. The adapter requires the separate package and exposes only a process-local advisory; it is not a council/model integration and cannot change Athena control flow.
+- **Moiras is optional and observation-only** — the MCP server enables it only when `ATHENA_MOIRAS_SHADOW` is explicitly truthy. It requires Moiras `0.1.x` with schema `1.0`, keeps advisories in process memory, and cannot change Athena control flow. Athena's current lifecycle source can reach four classes (`REAL_PROGRESS`, `ACTIVITY_WITHOUT_PROGRESS`, `PROBABLE_INACTIVITY`, `INDETERMINATE`); `LEGITIMATE_WAIT` and `EXTERNAL_BLOCK` require explicit signals for which the standard Athena lifecycle currently has no producer.
 
 ## Documentation
 

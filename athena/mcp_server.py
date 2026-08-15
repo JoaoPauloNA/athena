@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sys
 import uuid
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from athena.combos import ensure_default_combo, get_combo, list_combos
 from athena.execution import ExecutionControl, normalize_cancel_reason
 from athena.execution_registry import ExecutionRegistry
 from athena.models import ensure_models_fresh, refresh_model_catalog
+from athena.moiras_adapter import MoirasShadowObserver
 from athena.providers import (
     PROVIDERS,
     ask_provider,
@@ -34,6 +36,21 @@ ToolHandler = Callable[[dict[str, Any]], Any]
 STDOUT_LOCK = Lock()
 EXECUTION_REGISTRY = ExecutionRegistry()
 LONG_RUNNING_TOOLS = {"run_combo", "ask_provider"}
+
+
+def _moiras_shadow_enabled_from_env() -> bool:
+    return os.environ.get("ATHENA_MOIRAS_SHADOW", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+MOIRAS_SHADOW_OBSERVER = MoirasShadowObserver(
+    enabled=_moiras_shadow_enabled_from_env(),
+    background_sampling=True,
+)
 
 
 def _is_real_number(value: Any) -> bool:
@@ -227,6 +244,13 @@ def _handle_get_execution(arguments: dict[str, Any]) -> dict:
     )
     if payload is None:
         return _text_content({"execution": None})
+    attempt_id = payload.get("current_attempt_id")
+    if MOIRAS_SHADOW_OBSERVER.enabled and isinstance(attempt_id, str):
+        advisory = MOIRAS_SHADOW_OBSERVER.advisory_for(
+            str(payload.get("execution_id")),
+            attempt_id,
+        )
+        payload["moiras_shadow"] = advisory.to_dict() if advisory is not None else None
     return _text_content({"execution": payload})
 
 
@@ -444,6 +468,10 @@ def _register_execution_if_needed(request_id: Any, params: dict[str, Any]) -> st
 
     def _on_execution_update(attempt_snapshot: dict[str, Any]) -> None:
         EXECUTION_REGISTRY.update_attempt(execution_id, attempt_snapshot)
+        # submit() only copies an allowlist into a bounded queue.  Importing
+        # and calling Moiras happens on its sampler thread, never on the
+        # stdout/stderr lifecycle callback.
+        MOIRAS_SHADOW_OBSERVER.submit(attempt_snapshot)
 
     execution_control = ExecutionControl()
     EXECUTION_REGISTRY.create(
@@ -471,10 +499,14 @@ def _resolve_registered_long_execution_id(
         return None
     if arguments.get("execution_id") != candidate:
         return None
-    record = EXECUTION_REGISTRY.get(execution_id=candidate)
+    # Resolve through the registry's private raw-request-id index.  The
+    # public record intentionally hashes request ids that look sensitive or
+    # high-entropy, so comparing record["request_id"] with the raw JSON-RPC
+    # id would make a valid registered execution impossible to finalize.
+    record = EXECUTION_REGISTRY.get(request_id=request_id)
     if record is None:
         return None
-    if record.get("request_id") != request_id:
+    if record.get("execution_id") != candidate:
         return None
     if record.get("tool") != tool_name:
         return None
@@ -651,6 +683,7 @@ def run_stdio_server() -> None:
     for future in pending_futures:
         future.result()
     executor.shutdown(wait=True)
+    MOIRAS_SHADOW_OBSERVER.close()
 
 
 if __name__ == "__main__":

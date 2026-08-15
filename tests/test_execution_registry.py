@@ -462,6 +462,7 @@ def test_registry_strict_sanitization_inside_allowed_fields():
             "provider": "Codex ../../secret/path token",
             "profile": "FAST profile /tmp/password",
             "transport": "SSH!!!",
+            "termination_scope": "/private/escaped-process",
             "created_at_utc": "/Users/private/token",
             "state_entered_at_monotonic": float("inf"),
             "history": [
@@ -482,6 +483,7 @@ def test_registry_strict_sanitization_inside_allowed_fields():
     assert attempt["provider"] == "redacted_identifier"
     assert attempt["profile"] == "redacted_identifier"
     assert attempt["transport"] == "unknown"
+    assert attempt["termination_scope"] == "unknown"
     assert attempt["created_at_utc"] is None
     assert attempt["state_entered_at_monotonic"] is None
     assert attempt["history"][0]["from_state"] == "RUNNING"

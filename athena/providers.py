@@ -864,12 +864,18 @@ def ask_provider(
             f"— task_type informado foi '{task_type}'."
         )
 
-    record_usage(
-        provider_id,
-        prompt_chars=len(effective_prompt),
-        output_chars=len(result.output),
-        duration_s=result.duration_s,
-    )
+    try:
+        record_usage(
+            provider_id,
+            prompt_chars=len(effective_prompt),
+            output_chars=len(result.output),
+            duration_s=result.duration_s,
+        )
+    except OSError:
+        # Usage accounting is non-critical telemetry.  In particular, a
+        # read-only/unavailable usage file must not discard an otherwise
+        # valid lifecycle result and strand the caller's workspace lease.
+        result.warnings.append("usage_telemetry_unavailable")
     return result
 
 

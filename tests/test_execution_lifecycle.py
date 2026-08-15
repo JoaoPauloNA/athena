@@ -123,6 +123,9 @@ def test_child_that_refuses_to_die_is_reclaimed_after_timeout():
             assert result.timed_out is True
             assert result.exit_code == 124
             assert result.duration_s < 10.0
+            assert result.execution is not None
+            assert result.execution["state"] == "TERMINATION_UNCONFIRMED"
+            assert result.execution["process_tree_terminated_confirmed"] is False
 
             # The parent had time to fork+write the pidfile before being
             # killed (it writes immediately, well inside the 1s budget).
@@ -455,9 +458,11 @@ def test_progress_is_metadata_not_a_separate_state():
 def test_process_created_defaults_false_and_flips_true_on_identity_assignment():
     record = ExecutionRecord(provider="synthetic")
     assert record.process_created is False
+    assert record.to_dict()["termination_scope"] == "no_process"
     record.set_process_identity(pid=1234, pgid=1234)
     assert record.process_created is True
     assert record.to_dict()["process_created"] is True
+    assert record.to_dict()["termination_scope"] == "owned_process_group"
 
 
 def test_serialization_excludes_sensitive_content():

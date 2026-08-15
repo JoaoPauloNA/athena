@@ -41,7 +41,7 @@ Em vez de apostar em um único agente, o Athena:
 | 🔄 **Combos com failover** | Cadeias de providers com retries, modelo por etapa e políticas de timeout — o failover só prossegue quando o service_profile permite e a terminação da tentativa anterior está confirmada |
 | 📜 **Contrato de relatório de 10 tópicos** | Executores devolvem relatórios enxutos e estruturados — o contexto do orquestrador fica limpo |
 | 🧭 **Ciclo de vida e controle de execução** | Toda chamada longa recebe um `execution_id` com máquina de estados explícita, timeouts de inatividade/absoluto e cancelamento idempotente via `cancel_execution` |
-| 🕯️ **Observador sombra [Moiras](https://github.com/JoaoPauloNA/moiras) opcional** | Um adaptador desativado por padrão traduz atualizações allowlisted em classificações temporais inertes; o Athena nunca as usa para controlar timeout, cancelamento, fallback, lease ou autorização |
+| 🕯️ **Observador sombra [Moiras](https://github.com/JoaoPauloNA/moiras) opcional** | `ATHENA_MOIRAS_SHADOW=1` ativa um sampler coalescido em background e expõe seu advisory inerte via `get_execution`; o Athena nunca o usa para controlar timeout, cancelamento, fallback, lease ou autorização |
 
 ## Início rápido
 
@@ -50,6 +50,13 @@ git clone https://github.com/JoaoPauloNA/athena.git
 cd athena
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
+```
+
+A observação sombra opcional exige o pacote Moiras compatível separado e opt-in explícito ao iniciar o servidor:
+
+```bash
+pip install -e '.[moiras]'
+ATHENA_MOIRAS_SHADOW=1 python -m athena.mcp_server
 ```
 
 Subir o dashboard:
@@ -128,11 +135,11 @@ As duas camadas só julgam o que o próprio relatório torna checável — coman
 ## Limitações
 
 - **Status alpha, compartilhamento local** — sem hardening para exposição pública ou multi-tenant.
-- **A limpeza do grupo de processos é coberta em POSIX (macOS/Linux)** para descendentes que permanecem no grupo controlado pelo Athena. Um descendente que escape deliberadamente com `setsid()`/`setpgid()` permanece indeterminado. No Windows, o Athena controla apenas o processo direto; a árvore mais ampla é classificada `NOT_GUARANTEED` em timeout/cancelamento.
+- **A limpeza do grupo de processos é coberta em POSIX (macOS/Linux)** para descendentes que permanecem no grupo controlado pelo Athena. Durante a terminação, o Athena procura conservadoramente descendentes ainda visíveis que escaparam via `setsid()`/`setpgid()` e recusa confirmação da árvore quando encontra algum; não observar um escape não prova universalmente que nenhum ocorreu. No Windows, o Athena controla apenas o processo direto; a árvore mais ampla é classificada `NOT_GUARANTEED` em timeout/cancelamento.
 - **O lease de workspace é intraprocesso** — serializa tentativas concorrentes dentro de um único processo do Athena e não dá nenhuma proteção entre múltiplos workers/processos ou hosts compartilhando o mesmo filesystem.
 - **Fallback/retry é condicional, não automático** — depende da política do service_profile para o tipo de falha (erro vs. timeout) e exige confirmação positiva da terminação da tentativa anterior. Os perfis `authenticated_external` e `unknown` nunca fazem fallback automático.
 - **As notas de modelos são um cache local, não um feed ao vivo** — o Athena não busca nem atualiza dados de leaderboard sozinho; atualizar é um passo externo e opt-in.
-- **Moiras é opcional e somente observacional** — o servidor MCP não a ativa automaticamente. O adaptador exige o pacote separado e expõe apenas advisory intraprocesso; não integra conselho/modelo e não altera o fluxo de controle do Athena.
+- **Moiras é opcional e somente observacional** — o servidor MCP só a ativa quando `ATHENA_MOIRAS_SHADOW` é explicitamente verdadeiro. Exige Moiras `0.1.x` com schema `1.0`, mantém advisories apenas em memória e não altera o fluxo de controle. A fonte de lifecycle atual do Athena alcança quatro classes (`REAL_PROGRESS`, `ACTIVITY_WITHOUT_PROGRESS`, `PROBABLE_INACTIVITY`, `INDETERMINATE`); `LEGITIMATE_WAIT` e `EXTERNAL_BLOCK` exigem sinais explícitos que o lifecycle padrão do Athena ainda não produz.
 
 ## Documentação
 

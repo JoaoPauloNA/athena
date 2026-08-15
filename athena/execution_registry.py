@@ -66,6 +66,7 @@ _LIFECYCLE_ALLOWED_FIELDS = frozenset(
         "termination_reason",
         "direct_process_terminated_confirmed",
         "process_tree_terminated_confirmed",
+        "termination_scope",
         "client_abandoned",
         "fallback_started",
         "history",
@@ -407,6 +408,14 @@ def _sanitize_attempt_snapshot(execution_id: str, snapshot: dict[str, Any]) -> d
             continue
         if key == "termination_reason":
             sanitized["termination_reason"] = _categorize_reason(snapshot.get("termination_reason"))
+            continue
+        if key == "termination_scope":
+            value = snapshot.get(key)
+            sanitized[key] = (
+                value
+                if value in {"no_process", "direct_process", "owned_process_group"}
+                else "unknown"
+            )
             continue
         if key in _TIMESTAMP_FIELDS:
             sanitized[key] = _sanitize_iso_timestamp(snapshot.get(key))

@@ -261,10 +261,16 @@ def record_verdict(
         "tentativas": verdict.tentativas,
         "escalado": bool(verdict.escalado),
     }
-    with _LOCK:
-        records = _load()
-        records.append(record)
-        _save(records)
+    # Reliability history is local, non-critical telemetry. A filesystem or
+    # serialization failure here must never discard a completed verifier
+    # result or keep its workspace lease held after process termination.
+    try:
+        with _LOCK:
+            records = _load()
+            records.append(record)
+            _save(records)
+    except (OSError, TypeError, ValueError):
+        return
 
 
 def list_verdicts(limit: int = 50) -> list[dict]:

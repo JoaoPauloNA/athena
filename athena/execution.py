@@ -273,6 +273,10 @@ class ExecutionRecord:
 
     termination_reason: str | None = None
     direct_process_terminated_confirmed: bool = False
+    # Compatibility name retained for the 0.x contract. On POSIX this means
+    # that Athena's owned process group was observed empty and no escaped
+    # descendant was positively visible in the pre-teardown snapshot. It is
+    # not a universal proof that every descendant on the machine terminated.
     process_tree_terminated_confirmed: bool = False
 
     client_abandoned: bool = False
@@ -398,6 +402,7 @@ class ExecutionRecord:
         self._emit_update()
 
     def confirm_process_tree_terminated(self) -> None:
+        """Confirm the owned termination scope, not universal OS ancestry."""
         self.process_tree_terminated_confirmed = True
         self._emit_update()
 
@@ -453,6 +458,13 @@ class ExecutionRecord:
             "termination_reason": self.termination_reason,
             "direct_process_terminated_confirmed": self.direct_process_terminated_confirmed,
             "process_tree_terminated_confirmed": self.process_tree_terminated_confirmed,
+            "termination_scope": (
+                "no_process"
+                if not self.process_created
+                else "owned_process_group"
+                if self.pgid is not None
+                else "direct_process"
+            ),
             "client_abandoned": self.client_abandoned,
             "fallback_started": self.fallback_started,
             "history": [

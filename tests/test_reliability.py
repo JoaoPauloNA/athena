@@ -74,6 +74,16 @@ def test_task_excerpt_and_project_are_ignored(monkeypatch, tmp_path):
     assert "projeto" not in payload
 
 
+def test_record_verdict_is_best_effort_when_storage_fails(monkeypatch):
+    def fail_save(_records):
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(reliability, "_save", fail_save)
+
+    # Telemetry has no authority over a completed execution result.
+    assert record_verdict("claude", Verdict(verdadeiro=True)) is None
+
+
 def test_retention_caps_records(monkeypatch, tmp_path):
     target = _use_tmp_file(monkeypatch, tmp_path)
     monkeypatch.setattr(reliability, "_MAX_RECORDS", 10)

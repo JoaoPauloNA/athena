@@ -68,8 +68,9 @@ def canonicalize_workspace(path: str) -> str:
 
 def _is_safe_to_release(execution_meta: dict | None) -> bool:
     """Decide, from `RunResult.execution` metadata alone, whether the
-    attempt that produced it is safely over — i.e. positively confirmed to
-    have no process that could still be touching the workspace.
+    attempt that produced it is safely over within Athena's owned termination
+    scope. On POSIX, this is the owned process group plus positive detection
+    of currently visible escapes; it is not universal OS containment.
 
     - No metadata at all: never safe (fail-closed). Under active lease
       lifecycle, releasing without execution metadata could silently drop a
