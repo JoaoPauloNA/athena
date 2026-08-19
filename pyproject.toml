@@ -29,132 +29,31 @@ root_packages = ["athena"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "execution imports no other core module or legado"
-type = "forbidden"
-source_modules = ["athena.execution"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.lease",
-    "athena.mcp_server",
-    "athena.profiles",
-    "athena.registry",
+name = "core modules follow the allowed dependency layers and never import legado"
+type = "layers"
+layers = [
+    "(legado)",
+    "athena.verifier | athena.mcp_server",
     "athena.router",
-    "athena.transport",
-    "athena.verifier",
-    "legado",
+    "athena.bridge",
+    "athena.execution | athena.registry | athena.lease | athena.profiles | athena.transport",
 ]
 
 [[tool.importlinter.contracts]]
-name = "registry imports only execution from the core and never legado"
-type = "forbidden"
-source_modules = ["athena.registry"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.lease",
-    "athena.mcp_server",
-    "athena.profiles",
-    "athena.router",
-    "athena.transport",
-    "athena.verifier",
-    "legado",
-]
-
-[[tool.importlinter.contracts]]
-name = "lease imports no other core module or legado"
-type = "forbidden"
-source_modules = ["athena.lease"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.execution",
-    "athena.mcp_server",
-    "athena.profiles",
-    "athena.registry",
-    "athena.router",
-    "athena.transport",
-    "athena.verifier",
-    "legado",
-]
-
-[[tool.importlinter.contracts]]
-name = "profiles imports no other core module or legado"
-type = "forbidden"
-source_modules = ["athena.profiles"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.execution",
-    "athena.lease",
-    "athena.mcp_server",
-    "athena.registry",
-    "athena.router",
-    "athena.transport",
-    "athena.verifier",
-    "legado",
-]
-
-[[tool.importlinter.contracts]]
-name = "transport imports no other core module or legado"
-type = "forbidden"
-source_modules = ["athena.transport"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.execution",
-    "athena.lease",
-    "athena.mcp_server",
-    "athena.profiles",
-    "athena.registry",
-    "athena.router",
-    "athena.verifier",
-    "legado",
-]
-
-[[tool.importlinter.contracts]]
-name = "bridge imports only execution and lease from the core and never legado"
+name = "bridge imports only execution and lease from lower core layers"
 type = "forbidden"
 source_modules = ["athena.bridge"]
 forbidden_modules = [
-    "athena.mcp_server",
     "athena.profiles",
     "athena.registry",
-    "athena.router",
     "athena.transport",
-    "athena.verifier",
-    "legado",
 ]
 
 [[tool.importlinter.contracts]]
-name = "router imports only bridge execution lease and profiles from the core and never legado"
+name = "router does not import closed lower-layer modules"
 type = "forbidden"
 source_modules = ["athena.router"]
 forbidden_modules = [
-    "athena.mcp_server",
     "athena.registry",
     "athena.transport",
-    "athena.verifier",
-    "legado",
-]
-
-[[tool.importlinter.contracts]]
-name = "verifier imports only execution from the core and never legado"
-type = "forbidden"
-source_modules = ["athena.verifier"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.lease",
-    "athena.mcp_server",
-    "athena.profiles",
-    "athena.registry",
-    "athena.router",
-    "athena.transport",
-    "legado",
-]
-
-[[tool.importlinter.contracts]]
-name = "mcp server imports only router registry verifier execution and profiles and never legado"
-type = "forbidden"
-source_modules = ["athena.mcp_server"]
-forbidden_modules = [
-    "athena.bridge",
-    "athena.lease",
-    "athena.transport",
-    "legado",
 ]
