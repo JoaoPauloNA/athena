@@ -362,9 +362,11 @@ def resolve_model(provider_id: str, model: str | None) -> str | None:
 
     if model is None:
         chosen = recommended
+    elif model.strip().lower() == "auto":
+        return None
     else:
         matched = _to_id(model)
-        chosen = matched if matched is not None else recommended
+        chosen = matched if matched is not None else model.strip()
 
     if chosen and chosen.lower() == "auto":
         return None

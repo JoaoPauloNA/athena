@@ -12,6 +12,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from athena.execution import ExecutionControl, ExecutionRecord, ExecutionState, normalize_cancel_reason
+from athena.flight_recorder import FlightRecorderSession
+from athena.workspace_observer import WorkspaceChangeObserver
 
 HAS_PTY = sys.platform != "win32"
 if HAS_PTY:
@@ -35,9 +37,24 @@ TERMINATION_GRACE_S = 3.0
 # stay tight.
 _DEADLINE_POLL_INTERVAL_S = 0.05
 _CANCEL_DRAIN_JOIN_BUDGET_S = 0.25
+# After the direct CLI wrapper exits with no captured output and closed pipes,
+# allow a short window for a same-pgid worker to start before stray cleanup.
+_POST_DIRECT_EXIT_OUTPUT_GRACE_S = 0.5
 
 
-def _join_readers(stdout_thread: threading.Thread, stderr_thread: threading.Thread, budget_s: float = 5.0) -> None:
+def _with_flight_log(
+    flight: FlightRecorderSession,
+    record: ExecutionRecord,
+    result: RunResult,
+    *,
+    stdout: str | None = None,
+    stderr: str | None = None,
+) -> RunResult:
+    flight.finalize_terminal(result, record, stdout=stdout, stderr=stderr)
+    return result
+
+
+def _join_readers(stdout_thread: threading.Thread, stderr_thread: threading.Thread, budget_s: float = 5.0) -> bool:
     """Join both reader threads within a single shared time budget.
 
     A reader thread can block forever on stream.read() if its pipe fd stays
@@ -45,10 +62,14 @@ def _join_readers(stdout_thread: threading.Thread, stderr_thread: threading.Thre
     joining each with its own separate budget would double the worst-case
     wait. Threads are daemons, so giving up here just stops waiting; it does
     not leak anything the process wouldn't already leak.
+
+    Returns True only when both reader threads finished (stdout/stderr fds
+    observed closed from the parent side).
     """
     deadline = time.monotonic() + budget_s
     stdout_thread.join(timeout=max(0.0, deadline - time.monotonic()))
     stderr_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    return not stdout_thread.is_alive() and not stderr_thread.is_alive()
 
 
 def _reader_thread(stream, chunks: list[str], on_progress) -> None:
@@ -59,13 +80,22 @@ def _reader_thread(stream, chunks: list[str], on_progress) -> None:
     non-empty read is exactly the deterministic, observable progress signal
     this module tracks -- no semantic interpretation of the bytes happens
     here or anywhere in this module.
+
+    Uses binary ``read1()`` so already-buffered pipe bytes are returned
+    immediately instead of blocking until a full TextIOWrapper buffer or EOF.
     """
     try:
         while True:
-            data = stream.read(4096)
+            if hasattr(stream, "read1"):
+                data = stream.read1(4096)
+            else:
+                data = stream.read(4096)
             if not data:
                 break
-            chunks.append(data)
+            if isinstance(data, bytes):
+                chunks.append(data.decode("utf-8", errors="replace"))
+            else:
+                chunks.append(data)
             on_progress()
     except (ValueError, OSError):
         pass
@@ -83,6 +113,212 @@ def _poll_until(predicate, deadline: float, interval: float = 0.05) -> bool:
             return True
         time.sleep(interval)
     return predicate()
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists under different privileges; treat as alive/unknown.
+        return True
+    return True
+
+
+def _alive_escaped_descendants(root_pid: int, owned_pgid: int) -> set[int]:
+    return {pid for pid in _escaped_descendants(root_pid, owned_pgid) if _pid_alive(pid)}
+
+
+def _all_descendants(root_pid: int) -> set[int]:
+    """Best-effort discovery of all descendants of `root_pid` in the process table."""
+    if not HAS_PROCESS_GROUPS:
+        return set()
+    try:
+        completed = subprocess.run(
+            ["ps", "-axo", "pid=,ppid="],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if completed.returncode != 0:
+        return set()
+    rows: list[tuple[int, int]] = []
+    for line in completed.stdout.splitlines():
+        pieces = line.split()
+        if len(pieces) != 2:
+            continue
+        try:
+            rows.append((int(pieces[0]), int(pieces[1])))
+        except ValueError:
+            continue
+    descendants = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent_pid in rows:
+            if parent_pid in descendants and pid not in descendants:
+                descendants.add(pid)
+                changed = True
+    descendants.discard(root_pid)
+    return descendants
+
+
+def _alive_descendants(root_pid: int) -> set[int]:
+    return {pid for pid in _all_descendants(root_pid) if _pid_alive(pid)}
+
+
+def _resolve_post_direct_exit(
+    *,
+    proc: subprocess.Popen,
+    pgid: int | None,
+    record: ExecutionRecord,
+    streams_open: Callable[[], bool],
+    captured_output: Callable[[], bool],
+) -> bool:
+    """Block until owned-group workers finish or classify escaped survivors.
+
+    Returns True when escaped descendants remain alive outside the owned pgid
+    (TERMINATION_UNCONFIRMED). Otherwise returns False so the caller can
+    finalize normally or run stray cleanup when the group is still non-empty.
+
+    While stdout/stderr pipes remain open, or captured output already arrived,
+    keep waiting for the owned pgid to drain naturally (Cursor-style workers).
+    When pipes are closed and no output was captured, allow a short grace
+    window for a silent same-pgid worker to start before stray cleanup.
+    """
+    if pgid is None or not HAS_PROCESS_GROUPS:
+        return False
+    if _alive_escaped_descendants(proc.pid, pgid):
+        return True
+    if _process_group_is_empty(pgid):
+        return False
+
+    direct_exit_at = time.monotonic()
+    while record.deadline_status() is None and not _process_group_is_empty(pgid):
+        if _alive_escaped_descendants(proc.pid, pgid):
+            return True
+        if streams_open() or captured_output():
+            time.sleep(_DEADLINE_POLL_INTERVAL_S)
+            continue
+        if time.monotonic() - direct_exit_at >= _POST_DIRECT_EXIT_OUTPUT_GRACE_S:
+            break
+        time.sleep(_DEADLINE_POLL_INTERVAL_S)
+    return False
+
+
+def _unconfirmed_escaped_descendants_result(
+    *,
+    record: ExecutionRecord,
+    provider: str,
+    cmd: list[str],
+    start: float,
+    stdout: str,
+    stderr: str,
+    output: str,
+    original_returncode: int | None = None,
+) -> RunResult:
+    record.confirm_direct_process_terminated()
+    reason = (
+        "processo direto encerrou, mas descendentes fora do pgid possuído "
+        "continuam ativos; término/output real não confirmados"
+    )
+    if record.state == ExecutionState.RUNNING:
+        record.transition(ExecutionState.TERMINATING, reason=reason)
+    record.transition(ExecutionState.TERMINATION_UNCONFIRMED, reason=reason)
+    exit_code = 125 if original_returncode in (None, 0) else original_returncode
+    return RunResult(
+        provider=provider,
+        command=cmd,
+        output=output,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        error=(
+            "Terminação indeterminada: trabalho continua fora do escopo "
+            "controlado pelo Athena"
+        ),
+        duration_s=time.monotonic() - start,
+        telemetry={"original_returncode": original_returncode},
+        execution=record.to_dict(),
+    )
+
+
+def _unconfirmed_streams_open_result(
+    *,
+    record: ExecutionRecord,
+    provider: str,
+    cmd: list[str],
+    start: float,
+    stdout: str,
+    stderr: str,
+    output: str,
+    original_returncode: int | None = None,
+) -> RunResult:
+    record.confirm_direct_process_terminated()
+    reason = (
+        "processo direto encerrou, mas descritores stdout/stderr permanecem "
+        "abertos; término/output real não confirmados"
+    )
+    if record.state == ExecutionState.RUNNING:
+        record.transition(ExecutionState.TERMINATING, reason=reason)
+    record.transition(ExecutionState.TERMINATION_UNCONFIRMED, reason=reason)
+    exit_code = 125 if original_returncode in (None, 0) else original_returncode
+    return RunResult(
+        provider=provider,
+        command=cmd,
+        output=output,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        error=(
+            "Terminação indeterminada: stdout/stderr ainda abertos após "
+            "saída do processo direto"
+        ),
+        duration_s=time.monotonic() - start,
+        telemetry={"original_returncode": original_returncode},
+        execution=record.to_dict(),
+    )
+
+
+def _unconfirmed_empty_capture_result(
+    *,
+    record: ExecutionRecord,
+    provider: str,
+    cmd: list[str],
+    start: float,
+    stdout: str,
+    stderr: str,
+    output: str,
+    original_returncode: int | None = None,
+    reason: str | None = None,
+) -> RunResult:
+    record.confirm_direct_process_terminated()
+    resolved_reason = reason or (
+        "processo direto encerrou com exit 0, mas nenhum output foi "
+        "capturado; término/output real não confirmados"
+    )
+    if record.state == ExecutionState.RUNNING:
+        record.transition(ExecutionState.TERMINATING, reason=resolved_reason)
+    record.transition(ExecutionState.TERMINATION_UNCONFIRMED, reason=resolved_reason)
+    exit_code = 125 if original_returncode in (None, 0) else original_returncode
+    return RunResult(
+        provider=provider,
+        command=cmd,
+        output=output,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        error=(
+            "Terminação indeterminada: CLI encerrou sem output capturável"
+        ),
+        duration_s=time.monotonic() - start,
+        telemetry={"original_returncode": original_returncode},
+        execution=record.to_dict(),
+    )
 
 
 def _process_group_is_empty(pgid: int) -> bool:
@@ -319,6 +555,8 @@ def _finalize_after_natural_exit(
     stdout: str,
     stderr: str,
     output: str,
+    require_captured_output: bool = False,
+    alive_tracked_descendants: set[int] | None = None,
 ) -> RunResult:
     """Finalize a naturally-exited direct process with tree confirmation.
 
@@ -328,6 +566,34 @@ def _finalize_after_natural_exit(
     """
     original_returncode = proc.returncode if proc.returncode is not None else 1
     record.confirm_direct_process_terminated()
+
+    if alive_tracked_descendants:
+        alive = {pid for pid in alive_tracked_descendants if _pid_alive(pid)}
+        if alive:
+            return _unconfirmed_escaped_descendants_result(
+                record=record,
+                provider=provider,
+                cmd=cmd,
+                start=start,
+                stdout=stdout,
+                stderr=stderr,
+                output=output,
+                original_returncode=original_returncode,
+            )
+
+    if pgid is not None and HAS_PROCESS_GROUPS:
+        alive_escaped = _alive_escaped_descendants(proc.pid, pgid)
+        if alive_escaped:
+            return _unconfirmed_escaped_descendants_result(
+                record=record,
+                provider=provider,
+                cmd=cmd,
+                start=start,
+                stdout=stdout,
+                stderr=stderr,
+                output=output,
+                original_returncode=original_returncode,
+            )
 
     if pgid is not None and not _process_group_is_empty(pgid):
         record.transition(
@@ -362,6 +628,22 @@ def _finalize_after_natural_exit(
             )
     elif pgid is not None:
         record.confirm_process_tree_terminated()
+
+    if (
+        require_captured_output
+        and original_returncode == 0
+        and not (output or "").strip()
+    ):
+        return _unconfirmed_empty_capture_result(
+            record=record,
+            provider=provider,
+            cmd=cmd,
+            start=start,
+            stdout=stdout,
+            stderr=stderr,
+            output=output,
+            original_returncode=original_returncode,
+        )
 
     record.transition(
         ExecutionState.COMPLETED if original_returncode == 0 else ExecutionState.FAILED
@@ -500,6 +782,9 @@ class RunResult:
     telemetry: dict | None = None
     verdict: dict | None = None  # veredito do verificador, se verify=true
     execution: dict | None = None  # metadados do contrato de execução (athena.execution), se coletado
+    # decisão da política de verificação reforçada (athena.reinforced_verification).
+    # Sinal aditivo: nunca altera output/exit_code/verdict deste resultado.
+    reinforced_verification: dict | None = None
 
     def to_dict(self) -> dict:
         payload = {
@@ -526,6 +811,8 @@ class RunResult:
             payload["verdict"] = self.verdict
         if self.execution is not None:
             payload["execution"] = self.execution
+        if self.reinforced_verification is not None:
+            payload["reinforced_verification"] = self.reinforced_verification
         return payload
 
 
@@ -555,6 +842,7 @@ def run_subprocess(
     execution_control: ExecutionControl | None = None,
     remote_execution: bool = False,
     service_profile: str | None = None,
+    require_captured_output: bool = False,
 ) -> RunResult:
     """Run `command` to completion, enforcing two independent deadlines.
 
@@ -585,9 +873,19 @@ def run_subprocess(
         provider=provider,
         profile=service_profile,
         transport="ssh" if remote_execution else "local",
-        on_update=on_execution_update,
         **record_kwargs,
     )
+    flight = FlightRecorderSession(
+        execution_id=record.execution_id,
+        attempt_id=record.attempt_id,
+        provider=provider,
+        profile=service_profile,
+        transport=record.transport,
+        command=cmd,
+        cwd=cwd,
+        env=merged_env,
+    )
+    record.on_update = flight.wrap_on_update(on_execution_update)
     record.transition(ExecutionState.STARTING)
     grace_s = TERMINATION_GRACE_S if termination_grace_s is None else termination_grace_s
     if execution_control is not None and execution_control.cancellation_requested:
@@ -596,15 +894,19 @@ def run_subprocess(
             record.mark_client_abandoned()
             reason = "client_abandoned"
         record.transition(ExecutionState.CANCELLED, reason=reason)
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=130,
-            timed_out=False,
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
-            error=reason,
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=130,
+                timed_out=False,
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+                error=reason,
+            ),
         )
 
     popen_kwargs: dict = {
@@ -612,7 +914,6 @@ def run_subprocess(
         "env": merged_env,
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
-        "text": True,
     }
     popen_kwargs["stdin"] = subprocess.DEVNULL if input_text is None else subprocess.PIPE
     if HAS_PROCESS_GROUPS:
@@ -629,26 +930,34 @@ def run_subprocess(
         # so no termination confirmation is required (see
         # router._fallback_block_reason).
         record.transition(ExecutionState.FAILED, reason="Comando não encontrado")
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=127,
-            error=f"Comando não encontrado: {cmd[0]}",
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=127,
+                error=f"Comando não encontrado: {cmd[0]}",
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
         )
     except OSError as exc:
         # Same as above: Popen() failed before any process existed.
         record.transition(ExecutionState.FAILED, reason=str(exc))
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=1,
-            error=str(exc),
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=1,
+                error=str(exc),
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
         )
 
     pgid: int | None = None
@@ -667,11 +976,19 @@ def run_subprocess(
         termination_grace_s=grace_s,
     )
 
+    observer = WorkspaceChangeObserver(
+        workspace=cwd,
+        record=record,
+        flight=flight,
+        poll_interval_s=0.5,
+    )
+    observer.start()
+
     try:
         if input_text is not None:
             def _write_stdin() -> None:
                 try:
-                    proc.stdin.write(input_text)
+                    proc.stdin.write(input_text.encode("utf-8"))
                     proc.stdin.close()
                 except (BrokenPipeError, OSError, ValueError):
                     pass
@@ -693,6 +1010,8 @@ def run_subprocess(
 
         deadline_reason: str | None = None
         cancel_reason = "user_requested"
+        escaped_unconfirmed = False
+        tracked_descendant_pids: set[int] = set()
         while True:
             if execution_control is not None and execution_control.cancellation_requested:
                 cancel_reason = normalize_cancel_reason(execution_control.cancel_reason)
@@ -700,6 +1019,9 @@ def run_subprocess(
                     record.mark_client_abandoned()
                     cancel_reason = "client_abandoned"
                 break
+            if pgid is not None and HAS_PROCESS_GROUPS and proc.poll() is None:
+                tracked_descendant_pids.update(_alive_descendants(proc.pid))
+                tracked_descendant_pids.update(_alive_escaped_descendants(proc.pid, pgid))
             # Deadline check comes first: a process observed as finished
             # (proc.poll() is not None) *after* its absolute/idle deadline
             # already expired must still be reported as timed out, not as a
@@ -709,6 +1031,20 @@ def run_subprocess(
             if deadline_reason is not None:
                 break
             if proc.poll() is not None:
+                tracked_descendant_pids.update(_alive_descendants(proc.pid))
+                if pgid is not None and HAS_PROCESS_GROUPS:
+                    tracked_descendant_pids.update(_alive_escaped_descendants(proc.pid, pgid))
+                if _resolve_post_direct_exit(
+                    proc=proc,
+                    pgid=pgid,
+                    record=record,
+                    streams_open=lambda: stdout_thread.is_alive() or stderr_thread.is_alive(),
+                    captured_output=lambda: bool(stdout_chunks or stderr_chunks),
+                ):
+                    escaped_unconfirmed = True
+                elif any(_pid_alive(pid) for pid in tracked_descendant_pids):
+                    escaped_unconfirmed = True
+                deadline_reason = record.deadline_status()
                 record.record_progress()  # subprocess completion is itself progress
                 break
             time.sleep(_DEADLINE_POLL_INTERVAL_S)
@@ -750,35 +1086,103 @@ def run_subprocess(
                 )
             )
             record.transition(final_state, reason=cancel_reason)
-            return RunResult(
-                provider=provider,
-                command=cmd,
-                output=output,
-                exit_code=130,
+            return _with_flight_log(
+                flight,
+                record,
+                RunResult(
+                    provider=provider,
+                    command=cmd,
+                    output=output,
+                    exit_code=130,
+                    stdout=stdout,
+                    stderr=stderr,
+                    timed_out=False,
+                    error=cancel_reason,
+                    duration_s=time.monotonic() - start,
+                    execution=record.to_dict(),
+                ),
                 stdout=stdout,
                 stderr=stderr,
-                timed_out=False,
-                error=cancel_reason,
-                duration_s=time.monotonic() - start,
-                execution=record.to_dict(),
             )
 
         if deadline_reason is None:
-            _join_readers(stdout_thread, stderr_thread)
+            streams_closed = _join_readers(stdout_thread, stderr_thread)
             stdout = clean_cli_output("".join(stdout_chunks))
             stderr = clean_cli_output("".join(stderr_chunks))
             output = "\n".join(part for part in (stdout, stderr) if part)
-            return _finalize_after_natural_exit(
-                record=record,
-                proc=proc,
-                pgid=pgid,
-                grace_s=grace_s,
-                provider=provider,
-                cmd=cmd,
-                start=start,
+            if escaped_unconfirmed:
+                return _with_flight_log(
+                    flight,
+                    record,
+                    _unconfirmed_escaped_descendants_result(
+                        record=record,
+                        provider=provider,
+                        cmd=cmd,
+                        start=start,
+                        stdout=stdout,
+                        stderr=stderr,
+                        output=output,
+                        original_returncode=proc.returncode,
+                    ),
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            if not streams_closed:
+                return _with_flight_log(
+                    flight,
+                    record,
+                    _unconfirmed_streams_open_result(
+                        record=record,
+                        provider=provider,
+                        cmd=cmd,
+                        start=start,
+                        stdout=stdout,
+                        stderr=stderr,
+                        output=output,
+                        original_returncode=proc.returncode,
+                    ),
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            alive_tracked = {
+                pid for pid in tracked_descendant_pids if _pid_alive(pid)
+            }
+            if require_captured_output and not (output or "").strip():
+                return _with_flight_log(
+                    flight,
+                    record,
+                    _unconfirmed_empty_capture_result(
+                        record=record,
+                        provider=provider,
+                        cmd=cmd,
+                        start=start,
+                        stdout=stdout,
+                        stderr=stderr,
+                        output=output,
+                        original_returncode=proc.returncode,
+                    ),
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            return _with_flight_log(
+                flight,
+                record,
+                _finalize_after_natural_exit(
+                    record=record,
+                    proc=proc,
+                    pgid=pgid,
+                    grace_s=grace_s,
+                    provider=provider,
+                    cmd=cmd,
+                    start=start,
+                    stdout=stdout,
+                    stderr=stderr,
+                    output=output,
+                    require_captured_output=require_captured_output,
+                    alive_tracked_descendants=alive_tracked,
+                ),
                 stdout=stdout,
                 stderr=stderr,
-                output=output,
             )
 
         if deadline_reason == "absolute_deadline":
@@ -810,17 +1214,23 @@ def run_subprocess(
             else (ExecutionState.CANCELLED if tree_confirmed else ExecutionState.TERMINATION_UNCONFIRMED)
         )
         record.transition(final_state, reason=timeout_reason)
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output=partial,
-            exit_code=124,
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output=partial,
+                exit_code=124,
+                stdout=stdout,
+                stderr=stderr,
+                timed_out=True,
+                error=timeout_reason,
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
             stdout=stdout,
             stderr=stderr,
-            timed_out=True,
-            error=timeout_reason,
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
         )
     except OSError as exc:
         _terminate_after_runtime_exception(
@@ -831,15 +1241,21 @@ def run_subprocess(
             grace_s=grace_s,
             remote_execution=remote_execution,
         )
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=1,
-            error=str(exc),
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=1,
+                error=str(exc),
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
         )
+    finally:
+        observer.stop()
 
 
 def _pty_poll_interval(record: ExecutionRecord, cap_s: float = 0.2) -> float:
@@ -915,9 +1331,19 @@ def run_with_pty(
         provider=provider,
         profile=service_profile,
         transport="ssh" if remote_execution else "local",
-        on_update=on_execution_update,
         **record_kwargs,
     )
+    flight = FlightRecorderSession(
+        execution_id=record.execution_id,
+        attempt_id=record.attempt_id,
+        provider=provider,
+        profile=service_profile,
+        transport=record.transport,
+        command=cmd,
+        cwd=cwd,
+        env=merged_env,
+    )
+    record.on_update = flight.wrap_on_update(on_execution_update)
     record.transition(ExecutionState.STARTING)
     grace_s = TERMINATION_GRACE_S if termination_grace_s is None else termination_grace_s
     if execution_control is not None and execution_control.cancellation_requested:
@@ -926,15 +1352,19 @@ def run_with_pty(
             record.mark_client_abandoned()
             reason = "client_abandoned"
         record.transition(ExecutionState.CANCELLED, reason=reason)
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=130,
-            timed_out=False,
-            error=reason,
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=130,
+                timed_out=False,
+                error=reason,
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
         )
 
     def _timeout_reason(deadline_reason: str) -> str:
@@ -973,6 +1403,14 @@ def run_with_pty(
         os.close(slave_fd)
         slave_fd = None
 
+        observer = WorkspaceChangeObserver(
+            workspace=cwd,
+            record=record,
+            flight=flight,
+            poll_interval_s=0.5,
+        )
+        observer.start()
+
         chunks: list[bytes] = []
         cancel_reason = "user_requested"
 
@@ -984,19 +1422,25 @@ def run_with_pty(
                     cancel_reason = "client_abandoned"
                 raw = b"".join(chunks).decode("utf-8", errors="replace")
                 cleaned = clean_cli_output(raw)
-                return _cancel_result(
-                    record=record,
-                    proc=proc,
-                    pgid=pgid,
-                    reason=cancel_reason,
-                    provider=provider,
-                    cmd=cmd,
-                    start=start,
+                return _with_flight_log(
+                    flight,
+                    record,
+                    _cancel_result(
+                        record=record,
+                        proc=proc,
+                        pgid=pgid,
+                        reason=cancel_reason,
+                        provider=provider,
+                        cmd=cmd,
+                        start=start,
+                        stdout=cleaned,
+                        stderr="",
+                        output=cleaned,
+                        grace_s=grace_s,
+                        remote_execution=remote_execution,
+                    ),
                     stdout=cleaned,
                     stderr="",
-                    output=cleaned,
-                    grace_s=grace_s,
-                    remote_execution=remote_execution,
                 )
             deadline_reason = record.deadline_status()
             if deadline_reason is not None:
@@ -1026,15 +1470,22 @@ def run_with_pty(
                 )
                 record.transition(final_state, reason=timeout_reason)
                 raw = b"".join(chunks).decode("utf-8", errors="replace")
-                return RunResult(
-                    provider=provider,
-                    command=cmd,
-                    output=clean_cli_output(raw),
-                    exit_code=124,
-                    timed_out=True,
-                    error=timeout_reason,
-                    duration_s=time.monotonic() - start,
-                    execution=record.to_dict(),
+                cleaned = clean_cli_output(raw)
+                return _with_flight_log(
+                    flight,
+                    record,
+                    RunResult(
+                        provider=provider,
+                        command=cmd,
+                        output=cleaned,
+                        exit_code=124,
+                        timed_out=True,
+                        error=timeout_reason,
+                        duration_s=time.monotonic() - start,
+                        execution=record.to_dict(),
+                    ),
+                    stdout=cleaned,
+                    stderr="",
                 )
 
             ready, _, _ = select.select([master_fd], [], [], _pty_poll_interval(record))
@@ -1092,15 +1543,22 @@ def run_with_pty(
             )
             record.transition(final_state, reason=timeout_reason)
             raw = b"".join(chunks).decode("utf-8", errors="replace")
-            return RunResult(
-                provider=provider,
-                command=cmd,
-                output=clean_cli_output(raw),
-                exit_code=124,
-                timed_out=True,
-                error=timeout_reason,
-                duration_s=time.monotonic() - start,
-                execution=record.to_dict(),
+            cleaned = clean_cli_output(raw)
+            return _with_flight_log(
+                flight,
+                record,
+                RunResult(
+                    provider=provider,
+                    command=cmd,
+                    output=cleaned,
+                    exit_code=124,
+                    timed_out=True,
+                    error=timeout_reason,
+                    duration_s=time.monotonic() - start,
+                    execution=record.to_dict(),
+                ),
+                stdout=cleaned,
+                stderr="",
             )
 
         while True:
@@ -1117,17 +1575,23 @@ def run_with_pty(
 
         raw = b"".join(chunks).decode("utf-8", errors="replace")
         cleaned = clean_cli_output(raw)
-        return _finalize_after_natural_exit(
-            record=record,
-            proc=proc,
-            pgid=pgid,
-            grace_s=grace_s,
-            provider=provider,
-            cmd=cmd,
-            start=start,
+        return _with_flight_log(
+            flight,
+            record,
+            _finalize_after_natural_exit(
+                record=record,
+                proc=proc,
+                pgid=pgid,
+                grace_s=grace_s,
+                provider=provider,
+                cmd=cmd,
+                start=start,
+                stdout=cleaned,
+                stderr="",
+                output=cleaned,
+            ),
             stdout=cleaned,
             stderr="",
-            output=cleaned,
         )
     except FileNotFoundError:
         # If this happened before Popen() created a process, this is a plain
@@ -1144,14 +1608,18 @@ def run_with_pty(
                 grace_s=grace_s,
                 remote_execution=remote_execution,
             )
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=127,
-            error=f"Comando não encontrado: {cmd[0]}",
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=127,
+                error=f"Comando não encontrado: {cmd[0]}",
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
         )
     except OSError as exc:
         _terminate_after_runtime_exception(
@@ -1162,16 +1630,21 @@ def run_with_pty(
             grace_s=grace_s,
             remote_execution=remote_execution,
         )
-        return RunResult(
-            provider=provider,
-            command=cmd,
-            output="",
-            exit_code=1,
-            error=str(exc),
-            duration_s=time.monotonic() - start,
-            execution=record.to_dict(),
+        return _with_flight_log(
+            flight,
+            record,
+            RunResult(
+                provider=provider,
+                command=cmd,
+                output="",
+                exit_code=1,
+                error=str(exc),
+                duration_s=time.monotonic() - start,
+                execution=record.to_dict(),
+            ),
         )
     finally:
+        observer.stop()
         if slave_fd is not None:
             try:
                 os.close(slave_fd)

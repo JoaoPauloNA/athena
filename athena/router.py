@@ -9,9 +9,19 @@ from copy import deepcopy
 
 from athena import workspace_lease
 from athena.bridge import RunResult
-from athena.combos import get_combo
+from athena.combos import ComboStep, get_combo
 from athena.execution import DeadlineBudget, ExecutionControl, ExecutionState
+from athena.orchestrator_escalation import (
+    apply_orchestrator_continuation,
+    classify_verifiable_failure,
+    record_failure_and_maybe_escalate,
+)
 from athena.providers import PROVIDERS, ask_provider
+from athena.reinforced_verification import (
+    ReinforcedVerificationContext,
+    emit_reinforced_verification_event,
+    evaluate_reinforced_verification,
+)
 from athena.service_profiles import (
     get_service_profile,
     resolve_service_profile,
@@ -42,6 +52,18 @@ class FallbackBlocked(AllProvidersFailed):
 
 class ComboDeadlineExceeded(AllProvidersFailed):
     """Combo-level overall deadline exhausted before next safe stage."""
+
+
+class OrchestratorEscalationRequired(AllProvidersFailed):
+    """Falhas verificáveis exigem decisão do orquestrador externo.
+
+    Subclasse de ``AllProvidersFailed`` para compatibilidade com capturas
+    existentes; use ``.package`` para o evento ``orchestrator_escalation_required``.
+    """
+
+    def __init__(self, package: dict) -> None:
+        self.package = package
+        super().__init__(package.get("summary") or "orchestrator_escalation_required")
 
 
 _TERMINAL_EXECUTION_STATES = frozenset(
@@ -169,6 +191,7 @@ def run_combo(
     execution_control: ExecutionControl | None = None,
     service_profile: str | None = None,
     idle_timeout: float | None = None,
+    orchestrator_continuation: dict | None = None,
 ) -> RunResult:
     """Executa um prompt através de um combo, com fallback condicionado.
 
@@ -187,6 +210,19 @@ def run_combo(
         raise ValueError(f"Combo '{combo_id}' está desabilitado")
     if not combo.chain:
         raise ValueError(f"Combo '{combo_id}' não tem providers configurados")
+
+    execution_lease_id = execution_id or uuid.uuid4().hex
+    continuation_opts = apply_orchestrator_continuation(
+        execution_lease_id,
+        orchestrator_continuation,
+    )
+    active_chain = list(combo.chain)
+    if continuation_opts and continuation_opts.get("chain_provider_ids"):
+        override_ids = continuation_opts["chain_provider_ids"]
+        active_chain = [
+            ComboStep(provider_id=provider_id)
+            for provider_id in override_ids
+        ]
 
     if overall_timeout is not None and (
         isinstance(overall_timeout, bool)
@@ -219,7 +255,7 @@ def run_combo(
         )
 
     pre_resolved_step_timeouts: list[tuple[float | None, float | None]] = []
-    for step in combo.chain:
+    for step in active_chain:
         provider_spec = PROVIDERS.get(step.provider_id)
         explicit_absolute_timeout = timeout if timeout is not None else step.timeout
         pre_resolved_step_timeouts.append(
@@ -240,13 +276,10 @@ def run_combo(
     last_error: str | None = None
     attempted: list[str] = []
 
-    # Sprint A6: in-process workspace lease (see athena.workspace_lease for
-    # the in-process-only limitation). `execution_lease_id` identifies this
     # whole run_combo() call as the owning execution; each provider attempt
     # gets its own attempt_lease_id, acquired/transferred before that
     # attempt's ask_provider() call so a second execution can never touch
     # the same canonical workspace while this one might still be active.
-    execution_lease_id = execution_id or uuid.uuid4().hex
     canonical_workspace = (
         workspace_lease.canonicalize_workspace(working_directory) if working_directory else None
     )
@@ -344,7 +377,87 @@ def run_combo(
         if safe:
             _lease_release(last_execution_meta)
 
-    for step_index, step in enumerate(combo.chain):
+    def _budget_remaining() -> float | None:
+        return overall_budget.remaining if overall_budget is not None else None
+
+    def _record_and_maybe_escalate(
+        *,
+        result: RunResult,
+        provider_id: str,
+        last_error_value: str | None,
+        false_verdict: bool = False,
+        unconfirmed_termination: bool = False,
+    ) -> None:
+        failure = classify_verifiable_failure(
+            provider_id=provider_id,
+            result=result,
+            last_error=last_error_value,
+            false_verdict=false_verdict,
+            unconfirmed_termination=unconfirmed_termination,
+            execution_id=execution_lease_id,
+        )
+        if failure is None:
+            return
+        package = record_failure_and_maybe_escalate(
+            execution_id=execution_lease_id,
+            combo_id=combo_id,
+            attempted_chain=attempted,
+            failure=failure,
+            budget_remaining_s=_budget_remaining(),
+            episode_id=execution_lease_id,
+        )
+        if package is not None:
+            raise OrchestratorEscalationRequired(package)
+
+    # Cadeia declarada no combo, antes de qualquer override de continuação.
+    # É a referência de "cadeia original" da política de verificação reforçada.
+    original_chain_ids = tuple(chain_step.provider_id for chain_step in combo.chain)
+    standard_provider_ids = (primary_provider_id,) if original_chain_ids else ()
+
+    def _annotate_reinforced_verification(
+        result: RunResult,
+        *,
+        step: ComboStep,
+        step_index: int,
+    ) -> None:
+        """Anexa a decisão de verificação reforçada sem alterar o resultado.
+
+        Aditivo por construção: escreve apenas `result.reinforced_verification`
+        e um aviso legível em `result.warnings`. Nunca toca em exit_code,
+        output, verdict ou política de fallback.
+        """
+        from athena.models import classify_weight
+        from athena.recommend import estimate_complexity
+
+        model = step.model
+        context = ReinforcedVerificationContext(
+            used_provider_id=step.provider_id,
+            used_model=model,
+            used_weight=classify_weight(model) if model else None,
+            task_complexity=estimate_complexity(prompt),
+            standard_provider_ids=standard_provider_ids,
+            original_chain=original_chain_ids,
+            is_fallback=step_index > 0,
+            service_profile_id=resolved_profile.id,
+        )
+        decision = evaluate_reinforced_verification(context)
+        result.reinforced_verification = decision.to_dict()
+        if not decision.requires_reinforced_verification:
+            return
+        result.warnings.append(
+            "Verificação reforçada exigida para o resultado de "
+            f"'{step.provider_id}': {', '.join(decision.reasons)}."
+        )
+        emit_reinforced_verification_event(
+            decision,
+            execution_id=execution_lease_id,
+            combo_id=combo_id,
+            provider_id=step.provider_id,
+            attempted_chain=attempted,
+            original_chain=list(original_chain_ids),
+        )
+
+    for step_index, step in enumerate(active_chain):
         if overall_budget is not None and overall_budget.expired:
             _raise_combo_deadline()
         provider_id = step.provider_id
@@ -410,8 +523,42 @@ def run_combo(
                 result.duration_s = time.monotonic() - start_time
                 return result
 
-            # Sucesso
+            # Sucesso ou falha verificável (ex.: output vazio com exit 0)
             if result.exit_code == 0 and not result.timed_out:
+                if not (result.output or "").strip():
+                    last_error = "output vazio"
+                    _record_and_maybe_escalate(
+                        result=result,
+                        provider_id=provider_id,
+                        last_error_value=last_error,
+                    )
+                    block_reason = _fallback_block_reason(
+                        result,
+                        require_execution_metadata=canonical_workspace is not None,
+                        expected_execution_id=execution_lease_id if canonical_workspace else None,
+                        expected_attempt_id=current_attempt_lease_id if canonical_workspace else None,
+                    )
+                    if not combo.failover_policy.on_error:
+                        _lease_release(result.execution)
+                        result.duration_s = time.monotonic() - start_time
+                        return result
+                    if block_reason is not None:
+                        result.duration_s = time.monotonic() - start_time
+                        _record_and_maybe_escalate(
+                            result=result,
+                            provider_id=provider_id,
+                            last_error_value=block_reason,
+                            unconfirmed_termination=True,
+                        )
+                        raise FallbackBlocked(
+                            f"Fallback bloqueado após output vazio de '{provider_id}' em '{combo_id}': "
+                            f"{block_reason}."
+                        )
+                    if not resolved_profile.allow_fallback_on_error:
+                        _lease_release(result.execution)
+                        result.duration_s = time.monotonic() - start_time
+                        return result
+                    break
                 if verify:
                     if overall_budget is not None and overall_budget.expired:
                         _raise_combo_deadline()
@@ -490,6 +637,12 @@ def run_combo(
                         return result
                     if verdict.execution and verdict.execution.get("state") == ExecutionState.TERMINATION_UNCONFIRMED.value:
                         result.duration_s = time.monotonic() - start_time
+                        _record_and_maybe_escalate(
+                            result=result,
+                            provider_id=provider_id,
+                            last_error_value="terminação do verificador não confirmada",
+                            unconfirmed_termination=True,
+                        )
                         raise FallbackBlocked(
                             f"Fallback bloqueado após verificação de '{provider_id}' em '{combo_id}': "
                             "terminação do verificador não confirmada (TERMINATION_UNCONFIRMED)."
@@ -504,6 +657,12 @@ def run_combo(
                             f"Relatório de '{provider_id}' marcado FALSO pelo verificador "
                             f"{verdict.verificador}; tentando próximo provider do combo."
                         )
+                        _record_and_maybe_escalate(
+                            result=result,
+                            provider_id=provider_id,
+                            last_error_value=last_error,
+                            false_verdict=True,
+                        )
                         break  # Vai para próximo provider
                     if verdict.verdadeiro is None:
                         result.warnings.append(
@@ -514,6 +673,9 @@ def run_combo(
                 # confirmarem terminação segura, release_after_attempt()
                 # mantém o lease retido (fail-closed) mesmo no caminho de
                 # sucesso.
+                _annotate_reinforced_verification(
+                    result, step=step, step_index=step_index
+                )
                 _lease_release(last_execution_meta)
                 result.duration_s = time.monotonic() - start_time
                 return result
@@ -535,6 +697,12 @@ def run_combo(
                     return result
                 if block_reason is not None:
                     result.duration_s = time.monotonic() - start_time
+                    _record_and_maybe_escalate(
+                        result=result,
+                        provider_id=provider_id,
+                        last_error_value=block_reason,
+                        unconfirmed_termination=True,
+                    )
                     raise FallbackBlocked(
                         f"Fallback bloqueado após timeout de '{provider_id}' em '{combo_id}': "
                         f"{block_reason}."
@@ -543,6 +711,11 @@ def run_combo(
                     _lease_release(result.execution)
                     result.duration_s = time.monotonic() - start_time
                     return result
+                _record_and_maybe_escalate(
+                    result=result,
+                    provider_id=provider_id,
+                    last_error_value=last_error,
+                )
                 break  # Vai para próximo provider
 
             # Erro de execução (exit_code != 0)
@@ -560,6 +733,12 @@ def run_combo(
                     return result
                 if block_reason is not None:
                     result.duration_s = time.monotonic() - start_time
+                    _record_and_maybe_escalate(
+                        result=result,
+                        provider_id=provider_id,
+                        last_error_value=block_reason,
+                        unconfirmed_termination=True,
+                    )
                     raise FallbackBlocked(
                         f"Fallback bloqueado após falha de '{provider_id}' em '{combo_id}': "
                         f"{block_reason}."
@@ -568,6 +747,11 @@ def run_combo(
                     _lease_release(result.execution)
                     result.duration_s = time.monotonic() - start_time
                     return result
+                _record_and_maybe_escalate(
+                    result=result,
+                    provider_id=provider_id,
+                    last_error_value=last_error,
+                )
                 break  # Vai para próximo provider
 
             # Retry delay (se não for última tentativa)
@@ -590,7 +774,7 @@ def run_combo(
     # idempotente, não um novo caminho de liberação.
     _lease_release(last_execution_meta)
     error_msg = (
-        f"Combo '{combo_id}' esgotou todos os {len(combo.chain)} providers. "
+        f"Combo '{combo_id}' esgotou todos os {len(active_chain)} providers. "
         f"Tentados: {', '.join(attempted)}. "
         f"Último erro: {last_error or 'desconhecido'} "
         f"(duração total: {time.monotonic() - start_time:.1f}s)."

@@ -24,6 +24,37 @@ def test_looks_like_ai_cli_whole_word():
     assert prov._looks_like_ai_cli("cursor-agent")
 
 
+def test_qwen_provider_uses_safe_mode_model_and_prompt():
+    command = prov._build_command(
+        prov.PROVIDERS["qwen"],
+        "responda apenas OK",
+        binary="qwen",
+        model="qwenproxy-3.8-max",
+    )
+    assert command == [
+        "qwen",
+        "--safe-mode",
+        "--model",
+        "qwenproxy-3.8-max",
+        "-p",
+        "responda apenas OK",
+    ]
+
+
+def test_qwen_provider_without_model_uses_prompt_only():
+    command = prov._build_command(
+        prov.PROVIDERS["qwen"],
+        "responda apenas OK",
+        binary="qwen",
+        model=None,
+    )
+    assert command == [
+        "qwen",
+        "-p",
+        "responda apenas OK",
+    ]
+
+
 def test_looks_like_ai_cli_windows_extensions(monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     assert prov._looks_like_ai_cli("claude.cmd")

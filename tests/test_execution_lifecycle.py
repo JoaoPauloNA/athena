@@ -1267,6 +1267,37 @@ def test_configure_deadlines_populates_termination_grace_s_in_serialization():
 # --- athena.bridge: idle-deadline enforcement over the real transport (A4) -
 
 
+def test_idle_timeout_not_fired_on_short_flushed_stdout_before_eof():
+    """Regression: a short flushed write must reset the idle clock even when
+    total output is far below the reader buffer size and the process keeps
+    running without closing stdout.
+
+    Without incremental ``read1()`` draining, TextIOWrapper ``read(4096)``
+  can leave flushed bytes stuck in the pipe; the idle watcher then fires
+    even though observable output already exists."""
+    script = (
+        "import sys, time\n"
+        "print('SENTINEL_PARTIAL_OUT')\n"
+        "sys.stdout.flush()\n"
+        "time.sleep(0.6)\n"
+        "print('done')\n"
+    )
+
+    result = run_subprocess(
+        "synthetic-partial-stdout",
+        [sys.executable, "-c", script],
+        timeout=15,
+        idle_timeout=1,
+    )
+
+    assert result.timed_out is False
+    assert result.exit_code == 0
+    assert "SENTINEL_PARTIAL_OUT" in result.stdout
+    assert "done" in result.stdout
+    assert result.execution is not None
+    assert result.execution["state"] == "COMPLETED"
+
+
 def test_idle_timeout_kills_task_that_goes_silent_within_a_longer_absolute_timeout():
     """A task prints once, then blocks silently well past idle_timeout but
     well under the absolute timeout -- it must be killed for inactivity, not
@@ -1340,3 +1371,162 @@ def test_absolute_timeout_still_enforced_despite_continuous_heartbeat():
     assert result.duration_s < 10.0
     assert result.execution is not None
     assert result.execution["termination_reason"] == "Timeout após 1s"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX-only in this contract")
+def test_wrapper_early_exit_same_group_worker_output_is_waited_and_captured():
+    """Cursor-style transport: the direct CLI wrapper can exit before the real
+    worker finishes, as long as the worker stays in the owned pgid and keeps
+    writing to the inherited stdout pipe."""
+    worker_src = (
+        "import sys, time\n"
+        "for i in range(3):\n"
+        "    print('worker-line-' + str(i))\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(0.1)\n"
+        "print('ATHENA_CURSOR_WORKER_DONE')\n"
+    )
+    script = (
+        "import subprocess, sys\n"
+        f"worker = {worker_src!r}\n"
+        "subprocess.Popen([sys.executable, '-c', worker])\n"
+        "sys.exit(0)\n"
+    )
+
+    result = run_subprocess(
+        "synthetic-cursor-wrapper",
+        [sys.executable, "-c", script],
+        timeout=10,
+    )
+
+    assert result.timed_out is False
+    assert result.exit_code == 0
+    assert result.error is None
+    assert "ATHENA_CURSOR_WORKER_DONE" in result.stdout
+    assert result.execution is not None
+    assert result.execution["state"] == "COMPLETED"
+    assert result.execution["process_tree_terminated_confirmed"] is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX-only in this contract")
+def test_wrapper_early_exit_escaped_worker_is_termination_unconfirmed():
+    """When the real worker escapes the owned pgid, Athena must not report a
+    false COMPLETED with empty output while work continues elsewhere."""
+    worker_src = "import time; time.sleep(2); print('escaped-output')"
+    script = (
+        "import os, subprocess, sys, time\n"
+        f"worker = {worker_src!r}\n"
+        "subprocess.Popen([sys.executable, '-c', worker], preexec_fn=os.setsid)\n"
+        "time.sleep(0.2)\n"
+        "sys.exit(0)\n"
+    )
+
+    result = run_subprocess(
+        "synthetic-cursor-escaped",
+        [sys.executable, "-c", script],
+        timeout=5,
+    )
+
+    assert result.execution is not None
+    assert result.execution["state"] == "TERMINATION_UNCONFIRMED"
+    assert result.execution["direct_process_terminated_confirmed"] is True
+    assert result.execution["process_tree_terminated_confirmed"] is False
+    assert result.exit_code != 0
+    assert result.error is not None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX-only in this contract")
+def test_detached_surviving_grandchild_does_not_return_completed_empty():
+    """Regression: Cursor-style CLIs can double-fork/daemonize. The direct
+    wrapper may exit 0 immediately with EOF on stdout/stderr while the real
+    worker keeps running detached. Athena must not report COMPLETED with empty
+    output in that case when output capture is required."""
+    worker_src = (
+        "import os, sys, time\n"
+        "if os.fork() > 0:\n"
+        "    sys.exit(0)\n"
+        "os.setsid()\n"
+        "if os.fork() > 0:\n"
+        "    sys.exit(0)\n"
+        "with open(os.devnull, 'w') as devnull:\n"
+        "    os.dup2(devnull.fileno(), 1)\n"
+        "    os.dup2(devnull.fileno(), 2)\n"
+        "time.sleep(8)\n"
+    )
+    script = (
+        "import subprocess, sys\n"
+        f"subprocess.Popen([sys.executable, '-c', {worker_src!r}])\n"
+        "sys.exit(0)\n"
+    )
+
+    grandchild_pid: int | None = None
+    try:
+        start = time.monotonic()
+        result = run_subprocess(
+            "synthetic-cursor-detached-survivor",
+            [sys.executable, "-c", script],
+            timeout=30,
+            require_captured_output=True,
+        )
+        duration_s = time.monotonic() - start
+
+        assert duration_s < 2.0, "must not block on the detached survivor"
+        assert result.exit_code != 0
+        assert result.error is not None
+        assert (result.output or "").strip() == ""
+        assert result.execution is not None
+        assert result.execution["state"] == "TERMINATION_UNCONFIRMED"
+        assert result.execution["direct_process_terminated_confirmed"] is True
+        assert result.execution["process_tree_terminated_confirmed"] is False
+
+        # Best-effort: prove a survivor actually exists after the early return.
+        completed = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if completed.returncode == 0:
+            for line in completed.stdout.splitlines():
+                if "time.sleep(8)" in line:
+                    grandchild_pid = int(line.split()[0])
+                    break
+            if grandchild_pid is not None:
+                assert _pid_alive(grandchild_pid) is True
+    finally:
+        if grandchild_pid is not None and _pid_alive(grandchild_pid):
+            _force_kill(grandchild_pid)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX-only in this contract")
+def test_same_pgid_survivor_holding_stdout_open_is_waited_before_completion():
+    """Regression: when the wrapper exits but a same-pgid child still holds the
+    inherited stdout pipe open, Athena must wait for that child (and the pipe
+    EOF) before returning COMPLETED — not a premature empty success."""
+    worker_src = (
+        "import sys, time\n"
+        "time.sleep(0.8)\n"
+        "print('PIPE_HELD_OUTPUT')\n"
+        "sys.stdout.flush()\n"
+    )
+    script = (
+        "import subprocess, sys\n"
+        f"subprocess.Popen([sys.executable, '-c', {worker_src!r}])\n"
+        "sys.exit(0)\n"
+    )
+
+    start = time.monotonic()
+    result = run_subprocess(
+        "synthetic-cursor-pipe-survivor",
+        [sys.executable, "-c", script],
+        timeout=10,
+    )
+    duration_s = time.monotonic() - start
+
+    assert duration_s >= 0.75
+    assert result.exit_code == 0
+    assert "PIPE_HELD_OUTPUT" in result.stdout
+    assert result.execution is not None
+    assert result.execution["state"] == "COMPLETED"
+    assert result.execution["process_tree_terminated_confirmed"] is True

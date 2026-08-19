@@ -24,7 +24,7 @@ from athena.providers import (
     deliberate,
     list_providers,
 )
-from athena.router import run_combo
+from athena.router import OrchestratorEscalationRequired, run_combo
 from athena.service_profiles import (
     SERVICE_PROFILE_IDS,
     resolve_service_profile,
@@ -127,21 +127,31 @@ def _handle_run_combo(arguments: dict[str, Any]) -> dict:
             explicit_idle_timeout_s=arguments.get("idle_timeout"),
         )
         resolved_profile_id = profile.id
-    result = run_combo(
-        combo_id,
-        prompt,
-        working_directory=arguments.get("working_directory"),
-        timeout=arguments.get("timeout"),
-        verification_timeout=arguments.get("verification_timeout"),
-        overall_timeout=arguments.get("overall_timeout"),
-        verify=bool(arguments.get("verify", False)),
-        task_type=arguments.get("task_type"),
-        service_profile=resolved_profile_id,
-        idle_timeout=arguments.get("idle_timeout"),
-        execution_id=execution_id,
-        on_execution_update=on_execution_update,
-        execution_control=execution_control,
-    )
+    try:
+        result = run_combo(
+            combo_id,
+            prompt,
+            working_directory=arguments.get("working_directory"),
+            timeout=arguments.get("timeout"),
+            verification_timeout=arguments.get("verification_timeout"),
+            overall_timeout=arguments.get("overall_timeout"),
+            verify=bool(arguments.get("verify", False)),
+            task_type=arguments.get("task_type"),
+            service_profile=resolved_profile_id,
+            idle_timeout=arguments.get("idle_timeout"),
+            execution_id=execution_id,
+            on_execution_update=on_execution_update,
+            execution_control=execution_control,
+            orchestrator_continuation=arguments.get("orchestrator_continuation"),
+        )
+    except OrchestratorEscalationRequired as exc:
+        return _text_content({
+            "combo_id": combo_id,
+            "execution_id": execution_id,
+            "success": False,
+            "awaiting_orchestrator": True,
+            "orchestrator_escalation": exc.package,
+        })
     return _text_content({
         "combo_id": combo_id,
         "execution_id": execution_id,
@@ -305,6 +315,18 @@ TOOLS: list[dict] = [
                 "service_profile": {"type": "string", "enum": list(SERVICE_PROFILE_IDS)},
                 "idle_timeout": {"type": "number", "exclusiveMinimum": 0},
                 "execution_id": {"type": "string"},
+                "orchestrator_continuation": {
+                    "type": "object",
+                    "description": "Instrução explícita do orquestrador para continuar após orchestrator_escalation_required",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["retry", "continue"]},
+                        "reset_failure_tracker": {"type": "boolean"},
+                        "chain_provider_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                },
             },
         },
     },

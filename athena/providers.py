@@ -564,6 +564,17 @@ def _build_command(
         cmd.append(prompt)
         return cmd
 
+    if spec.id == "qwen":
+        # Qwen Code is interactive by default; provider calls must explicitly
+        # use -p so runners such as Aletheia receive one bounded response.
+        # --safe-mode antes de --model garante rota via QwenProxy (evita 401 do Model Studio).
+        if model:
+            cmd.extend(["--safe-mode", "--model", model, "-p", prompt])
+        else:
+            cmd.extend(["-p", prompt])
+        cmd.extend(extra)
+        return cmd
+
     if spec.id == "ollama":
         cmd.append("run")
         if model:
@@ -775,6 +786,7 @@ def ask_provider(
             execution_control=execution_control,
             remote_execution=True,
             service_profile=resolved_profile.id,
+            require_captured_output=provider_id == "agent",
         )
     elif spec.requires_pty:
         result = run_with_pty(
@@ -802,6 +814,7 @@ def ask_provider(
             on_execution_update=on_execution_update,
             execution_control=execution_control,
             service_profile=resolved_profile.id,
+            require_captured_output=provider_id == "agent",
         )
 
     if (
@@ -817,6 +830,25 @@ def ask_provider(
         )
         if not released:
             result.warnings.append(_lease_retained_warning())
+
+    if (
+        provider_id == "agent"
+        and result.execution
+        and result.execution.get("state") == ExecutionState.COMPLETED.value
+        and result.exit_code == 0
+        and not (result.output or "").strip()
+    ):
+        execution = dict(result.execution)
+        execution["state"] = ExecutionState.TERMINATION_UNCONFIRMED.value
+        execution["termination_reason"] = (
+            "provider agent retornou exit 0 sem output capturado; "
+            "término/output real não confirmados"
+        )
+        result.execution = execution
+        result.exit_code = 125
+        result.error = (
+            "Terminação indeterminada: Cursor encerrou sem output capturável"
+        )
 
     result.role = effective_role
     if model_warning:

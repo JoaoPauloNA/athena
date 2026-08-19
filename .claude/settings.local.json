@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(codex --help)",
+      "Bash(python3 -c \"import moiras; print\\('moiras ok', moiras.__file__\\)\")",
+      "Bash(.venv/bin/pip list *)",
+      "Read(//Users/joaopaulo/Documents/Projetos/**)",
+      "Bash(timeout 900 .venv/bin/python -m pytest -q)"
+    ]
+  }
+}
