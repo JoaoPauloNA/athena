@@ -28,3 +28,6 @@ harness/results/
 
 # Polygraph (repo irmão aninhado no workspace)
 polygraph/
+
+# Núcleo legado (referência de lógica, não reimportar)
+legado/
