@@ -1,0 +1,1 @@
+"""Verificação do Athena MCP."""

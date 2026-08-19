@@ -1,0 +1,160 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "athena-mcp"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = [
+    "import-linter",
+    "pytest",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["athena", "athena.*"]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.importlinter]
+root_packages = ["athena"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "execution imports no other core module or legado"
+type = "forbidden"
+source_modules = ["athena.execution"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.lease",
+    "athena.mcp_server",
+    "athena.profiles",
+    "athena.registry",
+    "athena.router",
+    "athena.transport",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "registry imports only execution from the core and never legado"
+type = "forbidden"
+source_modules = ["athena.registry"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.lease",
+    "athena.mcp_server",
+    "athena.profiles",
+    "athena.router",
+    "athena.transport",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "lease imports no other core module or legado"
+type = "forbidden"
+source_modules = ["athena.lease"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.execution",
+    "athena.mcp_server",
+    "athena.profiles",
+    "athena.registry",
+    "athena.router",
+    "athena.transport",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "profiles imports no other core module or legado"
+type = "forbidden"
+source_modules = ["athena.profiles"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.execution",
+    "athena.lease",
+    "athena.mcp_server",
+    "athena.registry",
+    "athena.router",
+    "athena.transport",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "transport imports no other core module or legado"
+type = "forbidden"
+source_modules = ["athena.transport"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.execution",
+    "athena.lease",
+    "athena.mcp_server",
+    "athena.profiles",
+    "athena.registry",
+    "athena.router",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "bridge imports only execution and lease from the core and never legado"
+type = "forbidden"
+source_modules = ["athena.bridge"]
+forbidden_modules = [
+    "athena.mcp_server",
+    "athena.profiles",
+    "athena.registry",
+    "athena.router",
+    "athena.transport",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "router imports only bridge execution lease and profiles from the core and never legado"
+type = "forbidden"
+source_modules = ["athena.router"]
+forbidden_modules = [
+    "athena.mcp_server",
+    "athena.registry",
+    "athena.transport",
+    "athena.verifier",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "verifier imports only execution from the core and never legado"
+type = "forbidden"
+source_modules = ["athena.verifier"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.lease",
+    "athena.mcp_server",
+    "athena.profiles",
+    "athena.registry",
+    "athena.router",
+    "athena.transport",
+    "legado",
+]
+
+[[tool.importlinter.contracts]]
+name = "mcp server imports only router registry verifier execution and profiles and never legado"
+type = "forbidden"
+source_modules = ["athena.mcp_server"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.lease",
+    "athena.transport",
+    "legado",
+]
