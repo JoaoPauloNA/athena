@@ -36,8 +36,21 @@ layers = [
     "athena.verifier | athena.mcp_server",
     "athena.router",
     "athena.bridge",
-    "athena.execution | athena.registry | athena.lease | athena.profiles | athena.transport",
+    "athena.registry | athena.lease | athena.profiles | athena.transport",
+    "athena.execution",
 ]
+
+[[tool.importlinter.contracts]]
+name = "lease does not import execution or another core module"
+type = "forbidden"
+source_modules = ["athena.lease"]
+forbidden_modules = ["athena.execution"]
+
+[[tool.importlinter.contracts]]
+name = "profiles does not import execution or another core module"
+type = "forbidden"
+source_modules = ["athena.profiles"]
+forbidden_modules = ["athena.execution"]
 
 [[tool.importlinter.contracts]]
 name = "bridge imports only execution and lease from lower core layers"
@@ -55,5 +68,28 @@ type = "forbidden"
 source_modules = ["athena.router"]
 forbidden_modules = [
     "athena.registry",
+    "athena.transport",
+]
+
+[[tool.importlinter.contracts]]
+name = "verifier imports only execution from lower core layers"
+type = "forbidden"
+source_modules = ["athena.verifier"]
+forbidden_modules = [
+    "athena.router",
+    "athena.bridge",
+    "athena.registry",
+    "athena.lease",
+    "athena.profiles",
+    "athena.transport",
+]
+
+[[tool.importlinter.contracts]]
+name = "mcp server does not bypass its allowed core dependencies"
+type = "forbidden"
+source_modules = ["athena.mcp_server"]
+forbidden_modules = [
+    "athena.bridge",
+    "athena.lease",
     "athena.transport",
 ]
