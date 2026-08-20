@@ -1,4 +1,7 @@
-"""Gate determinístico da integração do router com a fachada Aegis."""
+"""Gate determinístico da integração do router com a fachada Aegis.
+
+Excluído do fast gate por design; execute sob demanda, pois a comparação N=3 é cara.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +20,6 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_COMMIT = "6ceeee2"
-HEAD_COMMIT = "70bc349"
 REPETITIONS = 3
 REPORT_PATH = Path("/tmp/compare_aegis.md")
 SCENARIOS = ("confirmed_termination", "termination_unconfirmed")
@@ -236,17 +238,18 @@ def _remove_baseline_worktree(root: Path, controller: Path, temp_root: Path) -> 
         raise RuntimeError(f"worktree baseline deixou resíduo em {root}")
 
 
-def _verify_head() -> None:
+def _verify_clean_worktree() -> None:
     completed = subprocess.run(
-        ("git", "rev-parse", "--short", "HEAD"),
+        ("git", "status", "--porcelain"),
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,
         text=True,
     )
-    actual = completed.stdout.strip()
-    if completed.returncode != 0 or actual != HEAD_COMMIT:
-        raise RuntimeError(f"HEAD esperado {HEAD_COMMIT}, observado {actual or 'indisponível'}")
+    if completed.returncode != 0:
+        raise RuntimeError("não foi possível verificar se a árvore de trabalho está limpa")
+    if completed.stdout:
+        raise RuntimeError("a árvore de trabalho deve estar limpa antes da comparação")
 
 
 def _observation(record: dict[str, Any]) -> tuple[Any, ...]:
@@ -334,7 +337,7 @@ def _write_report(
         "",
         "## Isolamento",
         "",
-        f"- HEAD: `{HEAD_COMMIT}`; `athena.__file__`: `{files['head']}`",
+        f"- HEAD; `athena.__file__`: `{files['head']}`",
         f"- Baseline: `{BASELINE_COMMIT}`; `athena.__file__`: `{files['baseline']}`",
         f"- Worktree temporário somente-leitura: `{baseline_root.resolve()}`",
         "- Worktree removido ao final: sim (sem resíduo)",
@@ -395,7 +398,7 @@ def _write_report(
 
 def _main() -> int:
     started = time.monotonic()
-    _verify_head()
+    _verify_clean_worktree()
     baseline_root, controller, temp_root = _add_baseline_worktree()
     runs: list[dict[str, Any]] = []
     removed = False
