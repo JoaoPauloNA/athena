@@ -21,7 +21,11 @@ class Stage:
 STAGES = (
     Stage("lint", ("ruff", "check", ".")),
     Stage("boundaries", ("lint-imports",)),
-    Stage("p0", ("pytest", "tests"), frozenset({0, 5})),
+    Stage(
+        "p0",
+        ("pytest", "tests", "-m", "not regression"),
+        frozenset({0, 5}),
+    ),
 )
 
 

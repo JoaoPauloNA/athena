@@ -23,6 +23,9 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "regression: comparativo lento entre núcleo novo e legado, ~15 min, exige ollama local",
+]
 
 [tool.importlinter]
 root_packages = ["athena"]
