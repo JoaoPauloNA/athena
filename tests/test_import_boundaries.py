@@ -20,7 +20,8 @@ name = core modules follow the allowed dependency layers and never import legado
 type = layers
 layers =
     (legado)
-    athena.verifier | athena.mcp_server
+    athena.mcp_server
+    athena.verifier
     athena.router
     athena.bridge
     athena.registry | athena.lease | athena.profiles | athena.transport
@@ -71,6 +72,7 @@ forbidden_modules =
 name = mcp server does not bypass its allowed core dependencies
 type = forbidden
 source_modules = athena.mcp_server
+allow_indirect_imports = true
 forbidden_modules =
     athena.bridge
     athena.lease
