@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "athena-mcp"
 version = "0.0.0"
 requires-python = ">=3.11"
+dependencies = ["aegis"]
 
 [project.optional-dependencies]
 dev = [
@@ -98,3 +99,16 @@ forbidden_modules = [
     "athena.lease",
     "athena.transport",
 ]
+
+[[tool.importlinter.contracts]]
+name = "closed core modules do not import aegis"
+type = "forbidden"
+source_modules = [
+    "athena.execution",
+    "athena.lease",
+    "athena.registry",
+    "athena.transport",
+    "athena.bridge",
+    "athena.verifier",
+]
+forbidden_modules = ["aegis"]

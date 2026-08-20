@@ -26,6 +26,16 @@ ollama pull qwen3:8b
 ATHENA_REGRESSION=1 python -m pytest -m regression
 ```
 
+## Dependência local: Aegis
+
+A dependência de runtime `aegis` é declarada por nome. Como os repositórios
+Athena-MCP e Aegis vivem lado a lado, resolva-a no ambiente local com uma
+instalação editável a partir da raiz do Athena-MCP:
+
+```sh
+.venv/bin/pip install -e ../Aegis
+```
+
 A suíte leva aproximadamente 15 minutos. Sem `ATHENA_REGRESSION=1`, ou quando
 um binário Ollama exigido não existe, os testes são pulados com uma razão
 explícita. O preparo para Windows está documentado no relatório produzido pelo

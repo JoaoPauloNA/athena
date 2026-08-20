@@ -77,6 +77,18 @@ forbidden_modules =
     athena.bridge
     athena.lease
     athena.transport
+
+[importlinter:contract:closed-core-aegis-boundary]
+name = closed core modules do not import aegis
+type = forbidden
+source_modules =
+    athena.execution
+    athena.lease
+    athena.registry
+    athena.transport
+    athena.bridge
+    athena.verifier
+forbidden_modules = aegis
 """
 
 
@@ -112,6 +124,19 @@ def test_import_linter_rejects_dependency_on_legado(tmp_path: Path) -> None:
     result = _run_import_linter(tmp_path, "--config", ".importlinter")
 
     assert result.returncode != 0
+
+
+def test_import_linter_rejects_aegis_in_closed_core_module(tmp_path: Path) -> None:
+    shutil.copytree(PROJECT_ROOT / "athena", tmp_path / "athena")
+    (tmp_path / ".importlinter").write_text(IMPORT_LINTER_CONFIG, encoding="utf-8")
+    execution_module = tmp_path / "athena" / "execution" / "__init__.py"
+    with execution_module.open("a", encoding="utf-8") as module_file:
+        module_file.write("\nimport aegis\n")
+
+    result = _run_import_linter(tmp_path, "--config", ".importlinter")
+
+    assert result.returncode != 0
+    assert "closed core modules do not import aegis" in result.stdout + result.stderr
 
 
 def test_import_linter_accepts_repository_configuration() -> None:
