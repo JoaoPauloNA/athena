@@ -1,8 +1,11 @@
-"""Perfis de execução do Athena MCP."""
+"""Shim temporário de compatibilidade para os perfis fornecidos pelo Aegis.
 
-from .classification import classify_service_profile, resolve_service_profile
-from .contracts import FailureCondition, FallbackPolicy, ServiceProfile
-from .policy import (
+A remoção deste pacote de compatibilidade fica reservada para uma fatia futura.
+"""
+
+from aegis.classification import classify_service_profile, resolve_service_profile
+from aegis.contracts import FailureCondition, FallbackPolicy, ServiceProfile
+from aegis.policy import (
     FALLBACK_POLICIES,
     allows_automatic_fallback,
     get_fallback_policy,
