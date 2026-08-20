@@ -5,6 +5,10 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+from aegis.classification import classify_service_profile
+from aegis.contracts import FailureCondition, RiskContext
+from aegis.decision import evaluate
+
 from athena.bridge import BridgeRunnerContract, RunRequest, RunResult
 from athena.execution import (
     TERMINAL_STATES,
@@ -19,11 +23,6 @@ from athena.lease import (
     DirectoryLeaseContract,
     LeaseAcquisitionTimeout,
     LeaseOwnershipError,
-)
-from athena.profiles import (
-    FailureCondition,
-    allows_automatic_fallback,
-    classify_service_profile,
 )
 
 from .contracts import (
@@ -244,7 +243,14 @@ class ComboRouter:
                     )
 
                 condition = _failure_condition(attempt, last_result)
-                if not allows_automatic_fallback(profile, condition):
+                decision = evaluate(
+                    RiskContext(
+                        requested_action="automatic_fallback",
+                        explicit_profile_id=profile,
+                        failure_condition=condition,
+                    )
+                )
+                if not decision.approved:
                     raise AllAttemptsFailed(
                         f"automatic fallback is disabled for profile {profile.value}",
                         last_result=last_result,

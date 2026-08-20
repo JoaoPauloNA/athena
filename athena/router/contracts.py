@@ -7,9 +7,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+from aegis.contracts import FailureCondition, ServiceProfile
+
 from athena.bridge import RunRequest, RunResult
 from athena.execution import ExecutionControl, ExecutionDeadlines
-from athena.profiles import FailureCondition, ServiceProfile
 
 
 class ComboError(RuntimeError):
