@@ -29,6 +29,15 @@ STAGES = (
 )
 
 
+def _print_failure_diagnostic(stage: Stage, stdout: str, stderr: str) -> None:
+    """Exibir diagnóstico limitado para um estágio que falhou."""
+    print(f"{stage.name}: diagnostic", file=sys.stderr)
+    if stdout:
+        print(f"stdout (tail):\n{stdout[-2000:]}", file=sys.stderr)
+    if stderr:
+        print(f"stderr (tail):\n{stderr[-2000:]}", file=sys.stderr)
+
+
 def main() -> int:
     """Executar todos os estágios e retornar falha se qualquer um falhar."""
     failed = False
@@ -38,6 +47,8 @@ def main() -> int:
     )
 
     for stage in STAGES:
+        stdout = ""
+        stderr = ""
         try:
             result = subprocess.run(
                 stage.command,
@@ -46,9 +57,13 @@ def main() -> int:
                 env=env,
                 text=True,
             )
+            stdout = result.stdout
+            stderr = result.stderr
             passed = result.returncode in stage.accepted_return_codes
         except OSError:
             passed = False
+        if not passed:
+            _print_failure_diagnostic(stage, stdout, stderr)
         print(f"{stage.name}: {'PASS' if passed else 'FAIL'}")
         failed |= not passed
 
