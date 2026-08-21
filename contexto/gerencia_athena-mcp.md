@@ -11,7 +11,7 @@
 - A CI foi validada em `d3e191a028f0de751994af2bf4c28566f7ff7837` e o handoff documental da fatia anterior foi publicado em `62fb03b` em `origin/main`. O remoto monolítico antigo foi reconciliado por force-push autorizado.
 - Preservar as branches locais antigas `athena-release-20260814` e `fix/p0-audit-20260815`; não as excluir sem decisão explícita.
 - A fatia de CI está **FECHADA**. O GitHub Actions run `32435500126` passou em Ubuntu e macOS, com Python 3.11 e 3.12.
-- A P1 de transporte stdio/JSON-RPC está **FECHADA localmente** no commit `76e45ff`, com gate local verde. Ainda não houve push desse commit.
+- A P1 de transporte stdio/JSON-RPC foi publicada em `origin/main` nos commits `76e45ff` e `8336583`. A decisão da fatia seguinte (`transport/` sem consumidor) foi registrada em `4e13975`.
 
 ## Fechamento da fatia de CI
 
@@ -55,10 +55,20 @@
   - `.venv/bin/python harness/p0_gate.py` → `lint: PASS`, `boundaries: PASS`, `p0: PASS`
 
 ## Próxima fatia recomendada
-- Próxima fatia escolhida em 2026-08-21: investigação do módulo `transport/` sem consumidor no fluxo atual.
-- Escopo da abertura: leitura e decisão primeiro. Confirmar com evidência se `transport/` é lacuna real de integração ou módulo prematuro; pode terminar só em decisão de manter/remover, sem alteração de código.
+## Fechamento da investigação — `transport/` sem consumidor
+
+- Veredito: **manter por enquanto; não é lacuna real do fluxo atual**. O pacote `athena.transport` está prematuro em relação aos contratos públicos atuais, mas encapsula uma fronteira de SSH remota já reconstruída e testada.
+- Evidência do veredito:
+  - `athena/mcp_runtime.py` monta o runtime exclusivamente com `LocalBridgeRunner`; não há composição com `RemoteExecutor` nem `SSHCommandBuilder`.
+  - `athena/bridge/contracts.py` define `RunRequest` explicitamente como execução local (`cwd`, `env`, `use_pty`, lease e teardown local); não existe campo de transporte remoto, host, identidade SSH ou runner remoto.
+  - `athena/router/contracts.py` e `athena/router/orchestration.py` operam apenas sobre `ComboAttempt.request: RunRequest`; portanto o router atual não tem como selecionar SSH.
+  - `athena/mcp_server/contracts.py` e `athena/mcp_stdio/application.py` expõem `run_combo`/`ask_provider` sem qualquer parâmetro remoto equivalente ao `ssh_host` do legado.
+  - `git grep` no código modular encontrou `RemoteExecutor`, `SSHCommandBuilder`, `build_ssh_command` e `execute_remote` apenas dentro de `athena.transport` e `tests/test_transport.py`; não há consumidor de produção fora do próprio pacote.
+  - No legado, a execução remota existia dentro de `providers.ask_provider(..., ssh_host=...)`, isto é, em um contrato público diferente do modular atual.
+- Implicação arquitetural: usar SSH no núcleo novo exigiria uma fatia própria de contrato, não só “ligar o fio”. Seria necessário decidir como o transporte remoto entra em `RunRequest`/`ComboRequest`, no surface MCP (`ask_provider`/`run_combo`) e na composição do bridge, mantendo as fronteiras do import-linter.
+- Decisão desta fatia: **não implementar código adicional agora** e não remover o pacote nesta etapa. Remoção agora descartaria uma reconstrução já validada (`59f9e1b`) sem pressão funcional imediata; integração agora exigiria ampliação de escopo além da investigação autorizada.
 - O backlog adiado de compartilhamento/documentação/MLX permanece fora de WIP nesta etapa.
-- Manter WIP=1. Não abrir outra frente antes de concluir essa investigação.
+- Manter WIP=1. A próxima fatia deve ser escolhida explicitamente após este fechamento.
 
 ## Pendências e riscos
 
@@ -67,9 +77,9 @@
 | Dependências futuras de runtime | `--no-deps` impede instalação transitiva no CI | Adicionar instalação explícita quando uma nova dependência for introduzida |
 | Windows | Sem suporte; terminação de árvore de processos e execução do import-linter não atendem ao gate | Tratar em fatia futura independente |
 | Branches históricas | Preservam referências anteriores à reconciliação | Não excluir `athena-release-20260814` nem `fix/p0-audit-20260815` |
-| Próxima fatia | Investigação de `transport/` sem consumidor já escolhida | Executar leitura/evidência primeiro; só propor código se a investigação justificar |
+| Transporte remoto SSH | Pacote existe, mas sem consumidor no fluxo modular atual | Só abrir integração se houver decisão explícita de ampliar o contrato público |
 
 ## Handoff
-- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, handoff da CI publicado em `62fb03b` em `origin/main`, e P1 fechada localmente em `76e45ff` com gate local verde.
+- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, P1 publicada em `origin/main` (`76e45ff`, `8336583`) e investigação de `transport/` concluída como “manter, sem integração agora”.
 - Não reabrir a fatia de CI para resolver fragilidades ou suporte a Windows; registrar e sequenciar esses trabalhos separadamente.
-- Próxima abertura já definida: investigar `transport/` sem consumidor antes de qualquer nova alteração de código.
+- Se algum fluxo futuro precisar SSH remota no núcleo novo, abrir uma fatia própria de contrato antes de qualquer implementação.
