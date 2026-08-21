@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "athena-mcp"
 version = "0.0.0"
 requires-python = ">=3.11"
-dependencies = ["aegis"]
+dependencies = ["athena-aegis"]
 
 [project.optional-dependencies]
 dev = [
