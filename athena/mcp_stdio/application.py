@@ -27,8 +27,8 @@ TOOLS: tuple[dict[str, Any], ...] = (
             "required": ["attempts"],
             "properties": {
                 "attempts": {"type": "array", "minItems": 1},
-                "profile": {"type": ["string", "null"]},
-                "overall_timeout_s": {"type": ["number", "null"], "exclusiveMinimum": 0},
+                "profile": {"type": "string"},
+                "overall_timeout_s": {"type": "number", "exclusiveMinimum": 0},
                 "execution_id": {"type": "string", "minLength": 1},
                 "verification": {"type": "object"},
             },
@@ -43,10 +43,10 @@ TOOLS: tuple[dict[str, Any], ...] = (
             "properties": {
                 "provider_id": {"type": "string", "minLength": 1},
                 "attempts": {"type": "array", "minItems": 1},
-                "profile": {"type": ["string", "null"]},
+                "profile": {"type": "string"},
                 "task_type": {},
                 "working_directory": {"type": ["string", "null"]},
-                "overall_timeout_s": {"type": ["number", "null"], "exclusiveMinimum": 0},
+                "overall_timeout_s": {"type": "number", "exclusiveMinimum": 0},
                 "execution_id": {"type": "string", "minLength": 1},
                 "verification": {"type": "object"},
             },
