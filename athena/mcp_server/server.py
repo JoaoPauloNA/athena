@@ -11,7 +11,12 @@ from athena.registry import RequestId
 from athena.router import AllAttemptsFailed, ComboRequest
 from athena.verifier import VerificationRequest, VerificationResult
 
-from .contracts import MCPServerContract, MCPServerDependencies, ToolPayload
+from .contracts import (
+    MCPServerContract,
+    MCPServerDependencies,
+    PreparedExecution,
+    ToolPayload,
+)
 
 TOOL_NAMES = (
     "run_combo",
@@ -71,12 +76,14 @@ class MCPServer:
         *,
         request_id: RequestId,
         verification: VerificationRequest | None = None,
+        prepared: PreparedExecution | None = None,
     ) -> ToolPayload:
         return self._run(
             "run_combo",
             combo,
             request_id=request_id,
             verification=verification,
+            prepared=prepared,
         )
 
     def ask_provider(
@@ -88,18 +95,27 @@ class MCPServer:
         task_type: object | None = None,
         working_directory: object | None = None,
         verification: VerificationRequest | None = None,
+        prepared: PreparedExecution | None = None,
     ) -> ToolPayload:
-        profile = self._dependencies.profile_resolver(
-            explicit_profile_id=combo.profile,
-            provider_id=provider_id,
-            task_type=task_type,
-            working_directory=working_directory,
-        )
+        try:
+            profile = self._dependencies.profile_resolver(
+                explicit_profile_id=combo.profile,
+                provider_id=provider_id,
+                task_type=task_type,
+                working_directory=working_directory,
+            )
+        except Exception:
+            if prepared is not None:
+                self._dependencies.registry.finalize(
+                    prepared.execution_id, state=ExecutionState.FAILED.value
+                )
+            raise
         return self._run(
             "ask_provider",
             replace(combo, profile=profile),
             request_id=request_id,
             verification=verification,
+            prepared=prepared,
         )
 
     def _run(
@@ -109,16 +125,29 @@ class MCPServer:
         *,
         request_id: RequestId,
         verification: VerificationRequest | None,
+        prepared: PreparedExecution | None,
     ) -> ToolPayload:
-        execution_id = combo.execution_id or uuid.uuid4().hex
-        routed_combo = replace(combo, execution_id=execution_id)
-        control = self._dependencies.control_factory()
-        self._dependencies.registry.create(
-            execution_id=execution_id,
-            request_id=request_id,
-            tool=tool,
-            control=control,
+        if prepared is not None:
+            if prepared.tool != tool or prepared.request_id != request_id:
+                raise ValueError("prepared execution does not match the tool call")
+            if combo.execution_id not in (None, prepared.execution_id):
+                raise ValueError("prepared execution_id does not match the combo")
+        execution_id = (
+            prepared.execution_id
+            if prepared is not None
+            else combo.execution_id or uuid.uuid4().hex
         )
+        routed_combo = replace(combo, execution_id=execution_id)
+        if prepared is None:
+            control = self._dependencies.control_factory()
+            self._dependencies.registry.create(
+                execution_id=execution_id,
+                request_id=request_id,
+                tool=tool,
+                control=control,
+            )
+        else:
+            control = prepared.control
         try:
             result = self._dependencies.router.run(routed_combo, control=control)
         except AllAttemptsFailed as exc:
@@ -142,9 +171,15 @@ class MCPServer:
         )
         verification_result = None
         if verification is not None:
-            verification_result = self._dependencies.verifier(
-                verification, control=control
-            )
+            try:
+                verification_result = self._dependencies.verifier(
+                    verification, control=control
+                )
+            except Exception:
+                self._dependencies.registry.finalize(
+                    execution_id, state=ExecutionState.FAILED.value
+                )
+                raise
         self._dependencies.registry.finalize(execution_id, state=result.state.value)
         payload: dict[str, Any] = {
             "execution_id": execution_id,
@@ -153,6 +188,32 @@ class MCPServer:
         if verification_result is not None:
             payload["verification"] = _verification_payload(verification_result)
         return payload
+
+    def prepare_execution(
+        self,
+        tool: str,
+        *,
+        request_id: RequestId,
+        execution_id: str | None = None,
+    ) -> PreparedExecution:
+        if tool not in {"run_combo", "ask_provider"}:
+            raise ValueError(f"tool is not long-running: {tool}")
+        if execution_id is not None and (
+            not isinstance(execution_id, str) or not execution_id.strip()
+        ):
+            raise ValueError("execution_id must be a non-empty string")
+        resolved_id = execution_id or uuid.uuid4().hex
+        control = self._dependencies.control_factory()
+        self._dependencies.registry.create(
+            execution_id=resolved_id,
+            request_id=request_id,
+            tool=tool,
+            control=control,
+        )
+        return PreparedExecution(resolved_id, request_id, tool, control)
+
+    def abandon_nonterminal(self, *, reason: str = "client_abandoned") -> int:
+        return self._dependencies.registry.abandon_all_nonterminal(reason=reason)
 
     def get_execution(
         self,
@@ -192,9 +253,15 @@ def run_combo(
     *,
     request_id: RequestId,
     verification: VerificationRequest | None = None,
+    prepared: PreparedExecution | None = None,
 ) -> ToolPayload:
     """Handler direto da tool ``run_combo``."""
-    return server.run_combo(combo, request_id=request_id, verification=verification)
+    return server.run_combo(
+        combo,
+        request_id=request_id,
+        verification=verification,
+        prepared=prepared,
+    )
 
 
 def ask_provider(
@@ -206,6 +273,7 @@ def ask_provider(
     task_type: object | None = None,
     working_directory: object | None = None,
     verification: VerificationRequest | None = None,
+    prepared: PreparedExecution | None = None,
 ) -> ToolPayload:
     """Handler direto da tool ``ask_provider``."""
     return server.ask_provider(
@@ -215,6 +283,7 @@ def ask_provider(
         task_type=task_type,
         working_directory=working_directory,
         verification=verification,
+        prepared=prepared,
     )
 
 

@@ -8,6 +8,9 @@ version = "0.0.0"
 requires-python = ">=3.11"
 dependencies = ["athena-aegis"]
 
+[project.scripts]
+athena-mcp = "athena.mcp_runtime:main"
+
 [project.optional-dependencies]
 dev = [
     "import-linter",

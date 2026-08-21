@@ -115,6 +115,21 @@ def test_run_combo_delegates_router_registry_and_verifier(tmp_path: Path) -> Non
     assert server.get_execution("execution-delegated")["execution"]["finalized"]
 
 
+def test_prepared_execution_is_reused_without_second_registration(tmp_path: Path) -> None:
+    server, router, _ = _server(tmp_path)
+    prepared = server.prepare_execution(
+        "run_combo", request_id="prepared-request", execution_id="prepared-execution"
+    )
+
+    payload = server.run_combo(
+        _combo(tmp_path), request_id="prepared-request", prepared=prepared
+    )
+
+    assert payload["execution_id"] == "prepared-execution"
+    assert router.calls[0][0].execution_id == "prepared-execution"
+    assert len(server.list_executions()["executions"]) == 1
+
+
 def test_ask_provider_resolves_profile_then_uses_same_router_path(tmp_path: Path) -> None:
     server, router, _ = _server(tmp_path)
 

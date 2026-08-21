@@ -44,6 +44,16 @@ class MCPServerDependencies:
     control_factory: ControlFactory
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedExecution:
+    """Reserva interna criada antes de despachar trabalho demorado."""
+
+    execution_id: str
+    request_id: RequestId
+    tool: str
+    control: ExecutionControl
+
+
 @runtime_checkable
 class MCPServerContract(Protocol):
     """Tools invocaveis diretamente, sem transporte de rede."""
@@ -54,6 +64,7 @@ class MCPServerContract(Protocol):
         *,
         request_id: RequestId,
         verification: VerificationRequest | None = None,
+        prepared: PreparedExecution | None = None,
     ) -> ToolPayload:
         """Delegar um combo e opcionalmente sua verificacao."""
         ...
@@ -67,6 +78,7 @@ class MCPServerContract(Protocol):
         task_type: object | None = None,
         working_directory: object | None = None,
         verification: VerificationRequest | None = None,
+        prepared: PreparedExecution | None = None,
     ) -> ToolPayload:
         """Delegar ao router uma requisicao preparada para um provider."""
         ...
@@ -92,4 +104,18 @@ class MCPServerContract(Protocol):
         reason: str | None = None,
     ) -> ToolPayload:
         """Solicitar cancelamento idempotente por qualquer identificador."""
+        ...
+
+    def prepare_execution(
+        self,
+        tool: str,
+        *,
+        request_id: RequestId,
+        execution_id: str | None = None,
+    ) -> PreparedExecution:
+        """Reservar id e controle antes do trabalho demorado."""
+        ...
+
+    def abandon_nonterminal(self, *, reason: str = "client_abandoned") -> int:
+        """Sinalizar abandono das execuções ainda ativas."""
         ...
