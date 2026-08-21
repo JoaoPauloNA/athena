@@ -55,11 +55,10 @@
   - `.venv/bin/python harness/p0_gate.py` → `lint: PASS`, `boundaries: PASS`, `p0: PASS`
 
 ## Próxima fatia recomendada
-- Nova prioridade ainda não consolidada neste documento após o fechamento da P1.
-- Antes de abrir a próxima fatia, decidir explicitamente se o próximo foco será:
-  - investigação do módulo `transport/` sem consumidor no fluxo atual; ou
-  - retomada do backlog adiado de compartilhamento/documentação/MLX, caso continue prioritário.
-- Manter WIP=1. Não abrir a próxima fatia sem registrar a escolha aqui primeiro.
+- Próxima fatia escolhida em 2026-08-21: investigação do módulo `transport/` sem consumidor no fluxo atual.
+- Escopo da abertura: leitura e decisão primeiro. Confirmar com evidência se `transport/` é lacuna real de integração ou módulo prematuro; pode terminar só em decisão de manter/remover, sem alteração de código.
+- O backlog adiado de compartilhamento/documentação/MLX permanece fora de WIP nesta etapa.
+- Manter WIP=1. Não abrir outra frente antes de concluir essa investigação.
 
 ## Pendências e riscos
 
@@ -68,9 +67,9 @@
 | Dependências futuras de runtime | `--no-deps` impede instalação transitiva no CI | Adicionar instalação explícita quando uma nova dependência for introduzida |
 | Windows | Sem suporte; terminação de árvore de processos e execução do import-linter não atendem ao gate | Tratar em fatia futura independente |
 | Branches históricas | Preservam referências anteriores à reconciliação | Não excluir `athena-release-20260814` nem `fix/p0-audit-20260815` |
-| Próxima fatia | Prioridade após P1 ainda não escolhida | Registrar explicitamente a próxima abertura antes de editar código novamente |
+| Próxima fatia | Investigação de `transport/` sem consumidor já escolhida | Executar leitura/evidência primeiro; só propor código se a investigação justificar |
 
 ## Handoff
 - Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, handoff da CI publicado em `62fb03b` em `origin/main`, e P1 fechada localmente em `76e45ff` com gate local verde.
 - Não reabrir a fatia de CI para resolver fragilidades ou suporte a Windows; registrar e sequenciar esses trabalhos separadamente.
-- Antes da próxima alteração de código, escolher explicitamente a próxima fatia e atualizar esta gerência com a decisão.
+- Próxima abertura já definida: investigar `transport/` sem consumidor antes de qualquer nova alteração de código.
