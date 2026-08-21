@@ -78,6 +78,16 @@
 | Windows | Sem suporte; terminação de árvore de processos e execução do import-linter não atendem ao gate | Tratar em fatia futura independente |
 | Branches históricas | Preservam referências anteriores à reconciliação | Não excluir `athena-release-20260814` nem `fix/p0-audit-20260815` |
 | Transporte remoto SSH | Pacote existe, mas sem consumidor no fluxo modular atual | Só abrir integração se houver decisão explícita de ampliar o contrato público |
+| Fix B — coerção defensiva na fronteira MCP | Aberta, decidida como fatia separada. Hoje `_combo()`/`_ask()` repassam o valor cru: cliente que envie `"15"` em vez de `15` é rejeitado pela validação estrita de `ComboRequest`. O Fix A (commit `8845353`) removeu a causa conhecida, mas não protege contra cliente mal-comportado | Decidir depois se a fronteira do transporte aceita string numérica e converte, mantendo `ComboRequest` estrito. Não misturar com o Fix A |
+| `Athena-beta` desatualizado | Checkout registrado no Claude Desktop (`claude_desktop_config.json` → `Athena-beta/.venv/bin/athena-mcp`), parado em `eafd8df`, sem o Fix A. Teste ao vivo continua batendo no schema antigo até ser repromovido | Repromover a partir de `main` após o commit `8845353` — responsabilidade do guardião |
+
+## Fechamento — Fix A (schema das tools MCP)
+- Sintoma: `run_combo` com `overall_timeout_s` explícito falhava com `overall_timeout_s must be a positive finite number or None`, mesmo com valor válido.
+- Causa raiz: o schema anunciava união de tipos (`["number","null"]`, `["string","null"]`). Hosts MCP descartam o `type` quando é união — comprovado: campos de tipo simples (`attempts`, `execution_id`, `verification`) sobrevivem, os de união chegam como `{}`. Sem tipo, o cliente serializa como string e a validação estrita rejeita, corretamente.
+- Reprodução determinística (dois checkouts, Athena-MCP e Athena-beta): número JSON passa a validação; string `"15"` reproduz o erro exato.
+- Correção: `overall_timeout_s` → `{"type": "number", "exclusiveMinimum": 0}` e `profile` → `{"type": "string"}`, nos dois tools (`run_combo` e `ask_provider`). Opcionalidade segue expressa por ausência em `required`. Commit `8845353`.
+- Regressão: `tests/test_mcp_stdio_schema.py` — roundtrip real de `run_combo` via stdio com timeout numérico + asserção de que `tools/list` declara `type` simples (impede a união de voltar).
+- Não alterado: `athena/router/contracts.py` — a validação estava correta desde sempre.
 
 ## Handoff
 - Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, P1 publicada em `origin/main` (`76e45ff`, `8336583`) e investigação de `transport/` concluída como “manter, sem integração agora”.
