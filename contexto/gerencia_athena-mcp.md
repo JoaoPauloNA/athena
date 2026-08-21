@@ -7,11 +7,11 @@
 - Fora de escopo confirmado: `skip_permissions` não integra o núcleo novo. `RiskOutcome.REQUIRES_HUMAN_APPROVAL` permanece reservado no contrato do Aegis e não é emitido; não existe mecanismo de pausa/aprovação humana implementado.
 
 ## Estado comprovado
-- Última atualização: 2026-08-20.
-- A CI foi validada em `d3e191a028f0de751994af2bf4c28566f7ff7837`, que permanece em `origin/main`; o commit de documentação `dd23be9` vem em seguida apenas na `main` local e pode exigir um push normal futuro. O remoto monolítico antigo foi reconciliado por force-push autorizado.
+- Última atualização: 2026-08-21.
+- A CI foi validada em `d3e191a028f0de751994af2bf4c28566f7ff7837` e o handoff documental da fatia anterior foi publicado em `62fb03b` em `origin/main`. O remoto monolítico antigo foi reconciliado por force-push autorizado.
 - Preservar as branches locais antigas `athena-release-20260814` e `fix/p0-audit-20260815`; não as excluir sem decisão explícita.
 - A fatia de CI está **FECHADA**. O GitHub Actions run `32435500126` passou em Ubuntu e macOS, com Python 3.11 e 3.12.
-- P1 ainda não começou, mas está liberada pelo fechamento da fatia de CI. Manter WIP=1 e não iniciar sem autorização explícita.
+- A P1 de transporte stdio/JSON-RPC está **FECHADA localmente** no commit `76e45ff`, com gate local verde. Ainda não houve push desse commit.
 
 ## Fechamento da fatia de CI
 
@@ -38,11 +38,28 @@
 - A reconstrução modular substituiu o núcleo acoplado; o legado permanece apenas como referência de comportamento e protocolo, não como fonte para cópia direta.
 - O fechamento de cada fatia deve apresentar evidência verificável antes de liberar a seguinte. Não abrir trabalho paralelo fora do sequenciamento finish-to-start sem autorização explícita.
 
+## Fechamento da P1 — transporte stdio/JSON-RPC
+
+| Commit | Evidência entregue |
+|---|---|
+| `76e45ff` | Transporte stdio/JSON-RPC modular, contrato explícito, runtime fora de `athena.mcp_server`, entrypoint `athena-mcp` e testes de protocolo |
+
+- A implementação seguiu o princípio “contrato antes do código”: o novo pacote `athena/mcp_stdio/` introduz `PreparedToolCall`, `StdioTransport` e `MCPApplicationContract` antes da montagem concreta.
+- A composição concreta do runtime foi colocada em `athena/mcp_runtime.py`, fora do pacote fechado `athena.mcp_server`, para respeitar o import-linter. O pacote `mcp_server` continua sem importar `bridge`, `lease` ou `transport`.
+- A superfície pública do transporte expõe exatamente cinco tools modulares: `run_combo`, `ask_provider`, `get_execution`, `list_executions` e `cancel_execution`. Nenhuma tool exclusiva do legado foi reintroduzida.
+- Chamadas longas (`run_combo` e `ask_provider`) agora registram a execução antes do despacho para manter `get_execution` e `cancel_execution` responsivos durante o trabalho em background.
+- O encerramento por EOF abandona execuções não finalizadas com `client_abandoned`; falhas internas do worker retornam erro MCP genérico e finalizam a execução como `failed` sem vazar detalhe interno no stderr.
+- Evidência local da P1 em 2026-08-21:
+  - `.venv/bin/python -m pytest tests/test_mcp_server.py tests/test_mcp_stdio.py -q` → `15 passed`
+  - `.venv/bin/python -m ruff check athena/mcp_server athena/mcp_stdio athena/mcp_runtime.py athena/__main__.py tests/test_mcp_server.py tests/test_mcp_stdio.py` → `All checks passed`
+  - `.venv/bin/python harness/p0_gate.py` → `lint: PASS`, `boundaries: PASS`, `p0: PASS`
+
 ## Próxima fatia recomendada
-- P1: portar o transporte stdio/JSON-RPC da referência em `legado` para o novo `MCPServer`.
-- Tratar o legado como referência: suas dependências e acoplamentos não correspondem à arquitetura modular atual.
-- Critérios a definir na abertura da fatia: contrato do transporte, integração com o `MCPServer`, testes de protocolo e preservação das fronteiras de importação.
-- Não iniciar P1 sem autorização explícita.
+- Nova prioridade ainda não consolidada neste documento após o fechamento da P1.
+- Antes de abrir a próxima fatia, decidir explicitamente se o próximo foco será:
+  - investigação do módulo `transport/` sem consumidor no fluxo atual; ou
+  - retomada do backlog adiado de compartilhamento/documentação/MLX, caso continue prioritário.
+- Manter WIP=1. Não abrir a próxima fatia sem registrar a escolha aqui primeiro.
 
 ## Pendências e riscos
 
@@ -51,9 +68,9 @@
 | Dependências futuras de runtime | `--no-deps` impede instalação transitiva no CI | Adicionar instalação explícita quando uma nova dependência for introduzida |
 | Windows | Sem suporte; terminação de árvore de processos e execução do import-linter não atendem ao gate | Tratar em fatia futura independente |
 | Branches históricas | Preservam referências anteriores à reconciliação | Não excluir `athena-release-20260814` nem `fix/p0-audit-20260815` |
-| Transporte MCP | P1 liberada, ainda não iniciada | Aguardar autorização explícita para o port stdio/JSON-RPC |
+| Próxima fatia | Prioridade após P1 ainda não escolhida | Registrar explicitamente a próxima abertura antes de editar código novamente |
 
 ## Handoff
-- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, validado em `d3e191a028f0de751994af2bf4c28566f7ff7837`; o commit de documentação `dd23be9` está apenas na `main` local e pode exigir um push normal futuro.
+- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, handoff da CI publicado em `62fb03b` em `origin/main`, e P1 fechada localmente em `76e45ff` com gate local verde.
 - Não reabrir a fatia de CI para resolver fragilidades ou suporte a Windows; registrar e sequenciar esses trabalhos separadamente.
-- Próxima decisão humana: autorizar ou não a abertura da P1 de transporte stdio/JSON-RPC.
+- Antes da próxima alteração de código, escolher explicitamente a próxima fatia e atualizar esta gerência com a decisão.
