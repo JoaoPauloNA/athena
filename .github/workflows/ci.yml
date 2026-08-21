@@ -19,13 +19,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/checkout@v4
+        with:
+          repository: JoaoPauloNA/aegis
+          ref: main
+          path: .ci/aegis
+          ssh-key: ${{ secrets.AEGIS_DEPLOY_KEY }}
+          persist-credentials: false
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: |
+          pip install -e .ci/aegis
+          pip install -e ".[dev]" --no-deps
+          pip install import-linter pytest ruff
 
       - name: P0 gate
         run: python harness/p0_gate.py
