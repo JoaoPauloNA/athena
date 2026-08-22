@@ -11,7 +11,7 @@ from aegis.contracts import FailureCondition
 from athena.bridge import RunRequest
 from athena.execution import ExecutionDeadlines
 from athena.mcp_server import MCPServerContract, PreparedExecution
-from athena.router import ComboAttempt, ComboRequest
+from athena.router import AllAttemptsFailed, ComboAttempt, ComboRequest
 from athena.verifier import CommandClaim, FileClaim, VerificationRequest
 
 from .contracts import PreparedToolCall
@@ -151,6 +151,37 @@ def _verification(value: object) -> VerificationRequest | None:
     )
 
 
+def _result_payload(result: object | None, *, error: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for field in (
+        "state",
+        "exit_code",
+        "stdout",
+        "stderr",
+        "duration_s",
+        "expired_deadline",
+        "error",
+    ):
+        value = getattr(result, field, None)
+        if hasattr(value, "value"):
+            value = value.value
+        payload[field] = value
+    if result is None:
+        payload["error"] = error
+    return payload
+
+
+def _tool_result(payload: Mapping[str, Any], *, is_error: bool = False) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "content": [
+            {"type": "text", "text": json.dumps(payload, ensure_ascii=False)}
+        ]
+    }
+    if is_error:
+        result["isError"] = True
+    return result
+
+
 class MCPApplication:
     """Converter JSON inerte e invocar somente a superfície modular atual."""
 
@@ -216,22 +247,34 @@ class MCPApplication:
             execution_id = arguments.get("execution_id")
             combo = _combo(arguments, execution_id if isinstance(execution_id, str) else None)
             verification = _verification(arguments.get("verification"))
-            if name == "run_combo":
-                payload = self._server.run_combo(
-                    combo,
-                    request_id=request_id,
-                    verification=verification,
-                    prepared=reservation,
-                )
-            else:
-                payload = self._server.ask_provider(
-                    combo,
-                    request_id=request_id,
-                    provider_id=arguments["provider_id"],
-                    task_type=arguments.get("task_type"),
-                    working_directory=arguments.get("working_directory"),
-                    verification=verification,
-                    prepared=reservation,
+            try:
+                if name == "run_combo":
+                    payload = self._server.run_combo(
+                        combo,
+                        request_id=request_id,
+                        verification=verification,
+                        prepared=reservation,
+                    )
+                else:
+                    payload = self._server.ask_provider(
+                        combo,
+                        request_id=request_id,
+                        provider_id=arguments["provider_id"],
+                        task_type=arguments.get("task_type"),
+                        working_directory=arguments.get("working_directory"),
+                        verification=verification,
+                        prepared=reservation,
+                    )
+            except AllAttemptsFailed as exc:
+                return _tool_result(
+                    {
+                        "execution_id": combo.execution_id,
+                        "result": _result_payload(
+                            exc.last_result,
+                            error=str(exc),
+                        ),
+                    },
+                    is_error=True,
                 )
         elif name == "get_execution":
             payload = self._server.get_execution(
@@ -247,11 +290,7 @@ class MCPApplication:
             )
         else:
             raise LookupError(f"unknown tool: {name}")
-        return {
-            "content": [
-                {"type": "text", "text": json.dumps(payload, ensure_ascii=False)}
-            ]
-        }
+        return _tool_result(payload)
 
     def abandon_nonterminal(self) -> int:
         return self._server.abandon_nonterminal(reason="client_abandoned")

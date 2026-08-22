@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import select
 import subprocess
 import sys
 import threading
 import time
 from io import StringIO
 from pathlib import Path
+
+import pytest
 
 from athena.bridge import RunResult
 from athena.execution import CancellationToken, ExecutionState
@@ -21,6 +25,7 @@ from athena.mcp_stdio import (
 )
 from athena.profiles import resolve_service_profile
 from athena.registry import ExecutionRegistry
+from athena.router import AllAttemptsFailed
 
 
 class QueueInput:
@@ -73,6 +78,11 @@ class BlockingRouter:
             else ExecutionState.COMPLETED
         )
         return RunResult(("synthetic",), self.cwd, state, 0, "ok", "", 0.01)
+
+
+class NoResultFailureRouter:
+    def run(self, combo: object, *, control: object) -> RunResult:
+        raise AllAttemptsFailed("combo failed without a result")
 
 
 def _server(
@@ -254,6 +264,130 @@ def test_worker_failure_finalizes_failed_without_leaking_detail(tmp_path: Path) 
     assert response["error"]["code"] == -32000
     assert entry is not None and entry["state"] == "failed" and entry["finalized"]
     assert "private failure detail" not in stderr.getvalue()
+
+
+def test_combo_failure_without_last_result_is_a_tool_error(tmp_path: Path) -> None:
+    registry = ExecutionRegistry()
+    core = MCPServer(
+        MCPServerDependencies(
+            router=NoResultFailureRouter(),  # type: ignore[arg-type]
+            registry=registry,
+            verifier=lambda request, control: None,  # type: ignore[arg-type]
+            profile_resolver=resolve_service_profile,
+            control_factory=CancellationToken,
+        )
+    )
+
+    result = MCPApplication(core).call(
+        "run_combo",
+        _long_arguments(tmp_path, "no-result"),
+        request_id="no-result-request",
+    )
+
+    assert result["isError"] is True
+    content = result["content"]
+    assert isinstance(content, list)
+    payload = json.loads(content[0]["text"])
+    assert payload == {
+        "execution_id": "no-result",
+        "result": {
+            "state": None,
+            "exit_code": None,
+            "stdout": None,
+            "stderr": None,
+            "duration_s": None,
+            "expired_deadline": None,
+            "error": "combo failed without a result",
+        },
+    }
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process liveness requires POSIX")
+def test_real_combo_timeout_returns_tool_error_and_leaves_no_orphan(
+    tmp_path: Path,
+) -> None:
+    shell_pid_file = tmp_path / "shell.pid"
+    child_pid_file = tmp_path / "child.pid"
+    timeout_s = 3.0
+    command = (
+        'echo "$$" > "$1"; echo parcial; '
+        '/bin/sleep 300 & echo "$!" > "$2"; wait'
+    )
+    request = _call(
+        "real-timeout",
+        "run_combo",
+        {
+            "execution_id": "real-timeout-execution",
+            "overall_timeout_s": timeout_s,
+            "attempts": [
+                {
+                    "provider": "local",
+                    "command": [
+                        "/bin/sh",
+                        "-c",
+                        command,
+                        "athena-timeout",
+                        str(shell_pid_file),
+                        str(child_pid_file),
+                    ],
+                    "cwd": str(tmp_path),
+                    "termination_grace_s": 0.2,
+                }
+            ],
+        },
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-m", "athena"],
+        cwd=Path(__file__).resolve().parents[1],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    started = time.monotonic()
+    try:
+        assert process.stdin is not None
+        assert process.stdout is not None
+        process.stdin.write(json.dumps(request) + "\n")
+        process.stdin.flush()
+        readable, _, _ = select.select([process.stdout], [], [], timeout_s * 3)
+        assert readable, "timed out waiting for the tool response"
+        response = json.loads(process.stdout.readline())
+        elapsed = time.monotonic() - started
+
+        assert elapsed < timeout_s * 3
+        assert "error" not in response
+        tool_result = response["result"]
+        assert tool_result["isError"] is True
+        payload = json.loads(tool_result["content"][0]["text"])
+        assert payload["execution_id"] == "real-timeout-execution"
+        result = payload["result"]
+        assert result["state"] == "timed_out"
+        assert result["exit_code"] < 0
+        assert "parcial" in result["stdout"]
+        assert result["duration_s"] > 0
+        assert result["expired_deadline"] == "absolute_deadline"
+
+        pids = (int(shell_pid_file.read_text()), int(child_pid_file.read_text()))
+        liveness_deadline = time.monotonic() + 2.0
+        alive = set(pids)
+        while alive and time.monotonic() < liveness_deadline:
+            for pid in tuple(alive):
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    alive.remove(pid)
+            if alive:
+                time.sleep(0.02)
+        assert not alive, f"processes still alive after timeout: {sorted(alive)}"
+    finally:
+        if process.stdin is not None:
+            process.stdin.close()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
 
 
 def test_eof_abandons_execution_and_waits_for_worker(tmp_path: Path) -> None:
