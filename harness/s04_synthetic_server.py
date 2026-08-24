@@ -7,7 +7,11 @@ Nunca grava prompts ou valores — somente tipos e nomes de campos.
 Uso: python synthetic_server.py <arquivo_saida.json>
 """
 from __future__ import annotations
-import json, sys, os
+
+import json
+import os
+import sys
+from pathlib import Path
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/s04_typeof.json"
 
@@ -45,7 +49,7 @@ def _typeof(v):
     return type(v).__name__
 
 def _record(tool, args):
-    data = json.loads(open(OUT).read()) if os.path.exists(OUT) else {}
+    data = json.loads(Path(OUT).read_text()) if os.path.exists(OUT) else {}
     counts = data.setdefault(tool, {})
     counts["_calls"] = counts.get("_calls", 0) + 1
     for k, v in (args or {}).items():
