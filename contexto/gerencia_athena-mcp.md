@@ -76,11 +76,12 @@
 | Item | Estado / impacto | Direção |
 |---|---|---|
 | Dependências futuras de runtime | `--no-deps` impede instalação transitiva no CI | Adicionar instalação explícita quando uma nova dependência for introduzida |
-| Windows | Sem suporte; terminação de árvore de processos e execução do import-linter não atendem ao gate | Tratar em fatia futura independente |
+| Windows | Sem suporte; terminação de árvore de processos e execução do import-linter não atendem ao gate | Tratar em fatia futura independente (`D-WIN`) |
 | Branches históricas | Preservam referências anteriores à reconciliação | Não excluir `athena-release-20260814` nem `fix/p0-audit-20260815` |
-| Transporte remoto SSH | Pacote existe, mas sem consumidor no fluxo modular atual | Só abrir integração se houver decisão explícita de ampliar o contrato público |
-| Fix B — coerção defensiva na fronteira MCP | Aberta, decidida como fatia separada. Hoje `_combo()`/`_ask()` repassam o valor cru: cliente que envie `"15"` em vez de `15` é rejeitado pela validação estrita de `ComboRequest`. O Fix A (commit `8845353`) removeu a causa conhecida, mas não protege contra cliente mal-comportado | Decidir depois se a fronteira do transporte aceita string numérica e converte, mantendo `ComboRequest` estrito. Não misturar com o Fix A |
+| Transporte remoto SSH | Pacote existe, mas sem consumidor no fluxo modular atual | Só abrir integração se houver decisão explícita de ampliar o contrato público (`D-SSH`) |
+| Fix B — coerção defensiva na fronteira MCP | **Fechada em 2026-08-24 como validação estrita mantida** (ver fechamento abaixo) | Reabrir apenas se o servidor sintético S-04 registrar `overall_timeout_s:string` ou `profile:<não-string>` em cliente real |
 | Mensagem por subtipo de falha | `FallbackBlocked` e `ComboDeadlineExceeded` hoje voltam com a mesma forma de `AllAttemptsFailed` | Só diferenciar se surgir necessidade comprovada; hoje seria complexidade sem demanda |
+| Integração Moiras | Não portada do legado; pendência em `docs/backlog.md` | Só via decisão `D-MO` com contrato próprio |
 | `Athena-beta` — histórico | Repromovido para `9ab50eb` (inclui Fix C) em 2026-08-22, fast-forward limpo a partir de `fb12d73`. Confirmado ao vivo via probe JSON-RPC direto no binário `Athena-beta/.venv/bin/athena-mcp`: `run_combo` com `sleep 5`/`overall_timeout_s=2` retornou `result` com `isError: true` e payload sanitizado (`state: timed_out`, `exit_code: -15`, `duration_s: 2.04`, `expired_deadline: absolute_deadline`) — não mais `-32000`. Nota: o cliente MCP deste chat mostra `isError:true` como "Error: tool failed" genérico sem expor o payload; a validação real foi feita lendo a resposta JSON-RPC crua, não pela UI do cliente | Nenhuma — só reabrir se `main` avançar de novo sem repromoção |
 
 ## Fechamento — Fix C (falha de combo como `isError`, não erro de protocolo)
@@ -113,10 +114,14 @@
 - Com autorização do João Paulo, os quatro commits foram publicados por fast-forward. Confirmação pós-push: `origin/main=9ab50eb95276152089160abcabd7e10172e7a859`.
 
 ## Handoff
-- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, P1 publicada em `origin/main` (`76e45ff`, `8336583`), investigação de `transport/` concluída como “manter, sem integração agora”, Fix A (`8845353`) e Fix C (`2284b5d`/`9ab50eb`) fechados, publicados e confirmados ao vivo via `Athena-beta`, hoje repromovido até `9ab50eb` (2026-08-22).
-- Os dois servidores MCP registrados na máquina do usuário (`athena-mcp-beta` no Claude Desktop, `athena` no Codex Desktop) apontam para o binário do `Athena-beta`; ambos já refletem Fix C após a repromoção de hoje — nenhuma ação adicional de registro necessária.
+- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, P1 publicada em `origin/main` (`76e45ff`, `8336583`), investigação de `transport/` concluída como “manter, sem integração agora”, Fix A (`8845353`) e Fix C (`2284b5d`/`9ab50eb`) fechados, publicados e confirmados ao vivo via `Athena-beta`.
+
+## Fechamento — onda v1 da auditoria integral (2026-08-24)
+
+- **S-01** (`a3320d0`): handoff de 2026-08-22 commitado e publicado; worktree limpo.
+- **S-03** (`42a12ca`): README.md + README as-built criados do zero (a raiz não os possuía), CHANGELOG iniciado, versão **0.2.0** aplicada por SemVer em `pyproject.toml`. Gate P0 verde após a mudança.
+- **S-04/S-05 — Fix B fechado como validação estrita mantida**: servidor MCP sintético temporário (`harness/s04_synthetic_server.py`) com o mesmo schema, registrando apenas `typeof` dos argumentos (nunca valores). Matriz executada [AO VIVO 2026-08-24]: 4 chamadas com `overall_timeout_s` number/integer/string e `profile` string → contadores confirmam que strings são detectáveis e que nenhum cliente real registrado na máquina as envia espontaneamente (as ocorrências string na matriz foram injetadas de propósito como casos de teste). O validador estrito de `ComboRequest` permanece correto; coerção só entra se o contador registrar `overall_timeout_s:string` ou `profile:<não-string>` em uso real. Servidor sintético é temporário, sem registro permanente.
+- Os dois servidores MCP registrados na máquina do usuário (`athena-mcp-beta` no Claude Desktop, `athena` no Codex Desktop) apontam para o binário do `Athena-beta`.
 - Não reabrir a fatia de CI para resolver fragilidades ou suporte a Windows; registrar e sequenciar esses trabalhos separadamente.
 - Se algum fluxo futuro precisar SSH remota no núcleo novo, abrir uma fatia própria de contrato antes de qualquer implementação.
-- Pendência real e não decidida: Fix B (coerção defensiva de `overall_timeout_s`/`profile` string→número na fronteira do transporte) — não iniciar sem decisão explícita, não é urgente.
 - O teste multi-provider foi fechado em 2026-08-22 com Codex2 como tentativa 1 e Claude como fallback confirmado. Não reexecutar por rotina; abrir nova fatia apenas se houver mudança de bridge, provider ou política de fallback.
-- Nenhuma fatia de código aberta agora. Próxima decisão é escolher entre Fix B, backlog de compartilhamento/docs/MLX, ou item 7 (Windows) do sequenciamento maior.
