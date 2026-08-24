@@ -7,6 +7,7 @@
 - Fora de escopo confirmado: `skip_permissions` não integra o núcleo novo. `RiskOutcome.REQUIRES_HUMAN_APPROVAL` permanece reservado no contrato do Aegis e não é emitido; não existe mecanismo de pausa/aprovação humana implementado.
 
 ## Estado comprovado
+- Publicação remota concluída em 2026-08-22: `origin/main` e `main` local estão em `9ab50eb`, incluindo Fix A e Fix C. O `Athena-beta` foi corretamente repromovido e permanece ativo localmente.
 - Última atualização: 2026-08-21.
 - A CI foi validada em `d3e191a028f0de751994af2bf4c28566f7ff7837` e o handoff documental da fatia anterior foi publicado em `62fb03b` em `origin/main`. O remoto monolítico antigo foi reconciliado por force-push autorizado.
 - Preservar as branches locais antigas `athena-release-20260814` e `fix/p0-audit-20260815`; não as excluir sem decisão explícita.
@@ -79,9 +80,8 @@
 | Branches históricas | Preservam referências anteriores à reconciliação | Não excluir `athena-release-20260814` nem `fix/p0-audit-20260815` |
 | Transporte remoto SSH | Pacote existe, mas sem consumidor no fluxo modular atual | Só abrir integração se houver decisão explícita de ampliar o contrato público |
 | Fix B — coerção defensiva na fronteira MCP | Aberta, decidida como fatia separada. Hoje `_combo()`/`_ask()` repassam o valor cru: cliente que envie `"15"` em vez de `15` é rejeitado pela validação estrita de `ComboRequest`. O Fix A (commit `8845353`) removeu a causa conhecida, mas não protege contra cliente mal-comportado | Decidir depois se a fronteira do transporte aceita string numérica e converte, mantendo `ComboRequest` estrito. Não misturar com o Fix A |
-| `Athena-beta` — repromoção pendente de novo | Está em `fb12d73`; `main` avançou para `2284b5d` (Fix C). O servidor registrado no Claude Desktop segue devolvendo `-32000` em falha de combo até ser repromovido | Repromover a partir de `main` — responsabilidade do guardião |
 | Mensagem por subtipo de falha | `FallbackBlocked` e `ComboDeadlineExceeded` hoje voltam com a mesma forma de `AllAttemptsFailed` | Só diferenciar se surgir necessidade comprovada; hoje seria complexidade sem demanda |
-| `Athena-beta` — histórico | Repromovido para `fb12d73` (inclui Fix A) em 2026-08-21. Confirmado ao vivo: `run_combo` com `overall_timeout_s` numérico via o servidor registrado (`claude_desktop_config.json` → `Athena-beta/.venv/bin/athena-mcp`) retornou `state: completed` sem erro de validação | Nenhuma — só reabrir se `main` avançar de novo sem repromoção |
+| `Athena-beta` — histórico | Repromovido para `9ab50eb` (inclui Fix C) em 2026-08-22, fast-forward limpo a partir de `fb12d73`. Confirmado ao vivo via probe JSON-RPC direto no binário `Athena-beta/.venv/bin/athena-mcp`: `run_combo` com `sleep 5`/`overall_timeout_s=2` retornou `result` com `isError: true` e payload sanitizado (`state: timed_out`, `exit_code: -15`, `duration_s: 2.04`, `expired_deadline: absolute_deadline`) — não mais `-32000`. Nota: o cliente MCP deste chat mostra `isError:true` como "Error: tool failed" genérico sem expor o payload; a validação real foi feita lendo a resposta JSON-RPC crua, não pela UI do cliente | Nenhuma — só reabrir se `main` avançar de novo sem repromoção |
 
 ## Fechamento — Fix C (falha de combo como `isError`, não erro de protocolo)
 - Sintoma relatado: `run_combo` com `overall_timeout_s=180` via Codex Desktop nunca devolveu stdout, exit_code nem estado sanitizado; sonda interrompida por circuit breaker manual.
@@ -100,9 +100,23 @@
 - Regressão: `tests/test_mcp_stdio_schema.py` — roundtrip real de `run_combo` via stdio com timeout numérico + asserção de que `tools/list` declara `type` simples (impede a união de voltar).
 - Não alterado: `athena/router/contracts.py` — a validação estava correta desde sempre.
 
+## Fechamento — teste multi-provider controlado (2026-08-22)
+- Fatiamento concluído sem alteração de código: `cx2`/Codex2 como tentativa primária e Claude CLI como fallback, através de `run_combo` no binário ativo `Athena-beta` em `9ab50eb`.
+- O caso controlado usou diretório temporário, perfil `text_generation`, teto global de 90 s, primeiro executor `cx2 exec` em sandbox read-only com deadline absoluto de 0,5 s, e Claude em modo `plan`, sem escrita. O resultado JSON-RPC bruto foi sucesso de protocolo e retorno final `completed`, `exit_code: 0`, `stdout: ATHENA_CLAUDE_FALLBACK_OK` e duração do fallback de 3,65 s. O marcador exclusivo prova que o fallback real ocorreu após a tentativa do Codex2.
+- A sonda sintética complementar (`sleep 4`, deadline de 3 s) retornou `timed_out`, `exit_code: -15`, `duration_s: 3,03` e `expired_deadline: absolute_deadline`; portanto o deadline do bridge no beta permanece efetivo.
+- O cliente de teste deve manter stdin aberto até receber a resposta: fechá-lo logo após escrever JSON-RPC aciona corretamente `client_abandoned` e cancela o trabalho antes do dispatch.
+- Ressalva operacional: o entrypoint editável do `Athena-beta`, iniciado com cwd do checkout `Athena-MCP`, importou o pacote do checkout principal por precedência de `sys.path`. A prova válida foi repetida com o processo iniciado em `Athena-beta`, confirmando import de `Athena-beta/athena/mcp_runtime.py`. Qualquer futura sonda do beta deve fixar esse cwd; isso não exige reconfigurar os servidores já registrados.
+- Pós-condição: nenhum processo `cx2`, `codex` ou `claude` órfão da prova permaneceu. Só processos preexistentes de integração Chrome/desktop foram observados.
+
+## Fechamento — auditoria e publicação (2026-08-22)
+- A auditoria identificou `origin/main=eafd8df13590375378a07e80f2cbd372a9ec04bf` atrás do `main local=9ab50eb95276152089160abcabd7e10172e7a859`, com quatro commits pendentes: Fix A, Fix C e seus registros de contexto.
+- Com autorização do João Paulo, os quatro commits foram publicados por fast-forward. Confirmação pós-push: `origin/main=9ab50eb95276152089160abcabd7e10172e7a859`.
+
 ## Handoff
-- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, P1 publicada em `origin/main` (`76e45ff`, `8336583`), investigação de `transport/` concluída como “manter, sem integração agora”, e Fix A do schema MCP fechado e publicado (`8845353`/`fb12d73`) — confirmado ao vivo via `Athena-beta`, já repromovido.
+- Estado-base para qualquer continuação: CI fechada e verde no run `32435500126`, P1 publicada em `origin/main` (`76e45ff`, `8336583`), investigação de `transport/` concluída como “manter, sem integração agora”, Fix A (`8845353`) e Fix C (`2284b5d`/`9ab50eb`) fechados, publicados e confirmados ao vivo via `Athena-beta`, hoje repromovido até `9ab50eb` (2026-08-22).
+- Os dois servidores MCP registrados na máquina do usuário (`athena-mcp-beta` no Claude Desktop, `athena` no Codex Desktop) apontam para o binário do `Athena-beta`; ambos já refletem Fix C após a repromoção de hoje — nenhuma ação adicional de registro necessária.
 - Não reabrir a fatia de CI para resolver fragilidades ou suporte a Windows; registrar e sequenciar esses trabalhos separadamente.
 - Se algum fluxo futuro precisar SSH remota no núcleo novo, abrir uma fatia própria de contrato antes de qualquer implementação.
 - Pendência real e não decidida: Fix B (coerção defensiva de `overall_timeout_s`/`profile` string→número na fronteira do transporte) — não iniciar sem decisão explícita, não é urgente.
-- Nenhuma fatia aberta agora. Próxima decisão é escolher entre Fix B, backlog de compartilhamento/docs/MLX, ou item 7 (Windows) do sequenciamento maior.
+- O teste multi-provider foi fechado em 2026-08-22 com Codex2 como tentativa 1 e Claude como fallback confirmado. Não reexecutar por rotina; abrir nova fatia apenas se houver mudança de bridge, provider ou política de fallback.
+- Nenhuma fatia de código aberta agora. Próxima decisão é escolher entre Fix B, backlog de compartilhamento/docs/MLX, ou item 7 (Windows) do sequenciamento maior.
