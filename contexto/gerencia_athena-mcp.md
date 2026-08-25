@@ -2,7 +2,8 @@
 
 ## Identidade do produto
 - Objetivo: núcleo de execução governada do ecossistema Athena. Despacha tarefas para CLIs de agentes com máquina de estados, deadlines, fallback controlado e verificação determinística mais advisory do resultado.
-- Escopo atual: nove pacotes modulares com fronteiras de importação verificadas por máquina: `execution/`, `registry/`, `lease/`, `profiles/`, `transport/`, `bridge/`, `router/`, `verifier/` e `mcp_server/`.
+- Escopo atual: dez pacotes modulares com fronteiras de importação verificadas por máquina: `execution/`, `registry/`, `lease/`, `profiles/`, `transport/`, `bridge/`, `router/`, `verifier/`, `mcp_server/` e `zeus/`.
+- **Zeus** (2026-08-24, `9482791`): módulo de recomendação de especialista (agente/persona/modelo). Determinístico por (entrada + versão do registro); abstenção fail-closed com reason codes; Themis só desempata com evidência suficiente; **nunca executa** — Aegis autoriza, Athena orquestra, Moiras observa. Gate adversarial: 19 testes em `tests/test_zeus.py`.
 - Aegis é a fonte da classificação de perfil de serviço e da política de fallback. O repositório privado é `JoaoPauloNA/aegis`; a distribuição é `athena-aegis`; o pacote de importação Python continua `aegis`. O commit da renomeação no Aegis é `4e3cc20`.
 - Fora de escopo confirmado: `skip_permissions` não integra o núcleo novo. `RiskOutcome.REQUIRES_HUMAN_APPROVAL` permanece reservado no contrato do Aegis e não é emitido; não existe mecanismo de pausa/aprovação humana implementado.
 
