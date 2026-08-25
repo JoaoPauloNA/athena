@@ -77,9 +77,9 @@ class ShadowEmitter:
             attempt_id=str(snapshot.get("attempt_id", "")),
             provider=str(snapshot.get("provider", "")),
             state=state.value,
-            progress_counter=int(snapshot.get("progress_counter", 0) or 0),
-            duration_s=snapshot.get("duration_s"),
-            expired_deadline=snapshot.get("expired_deadline"),
+            progress_counter=0,  # o record atual não expõe contador; campo reservado
+            duration_s=None,
+            expired_deadline=snapshot.get("reason"),
             cancelled_by_client=cancelled_by_client,
         )
         # to_dict valida a allowlist antes de qualquer entrega

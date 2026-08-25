@@ -9,6 +9,7 @@ from athena.execution import CancellationToken
 from athena.lease import DirectoryLeaseManager
 from athena.mcp_server import MCPServer, MCPServerDependencies
 from athena.mcp_stdio import JsonRpcStdioServer, MCPApplication, StdioTransport
+from athena.observation import ShadowEmitter
 from athena.profiles import resolve_service_profile
 from athena.registry import ExecutionRegistry
 from athena.router import ComboRouter
@@ -17,9 +18,16 @@ from athena.verifier import verify
 
 def build_stdio_server(
     transport: StdioTransport | None = None,
+    *,
+    shadow_observer=None,
 ) -> JsonRpcStdioServer:
-    """Montar as implementações concretas fora do pacote fechado mcp_server."""
+    """Montar as implementações concretas fora do pacote fechado mcp_server.
+
+    A observação sombra é opt-in: só fica ativa com ATHENA_MOIRAS_SHADOW=1
+    e um observer injetado. Sem isso, zero custo.
+    """
     registry = ExecutionRegistry()
+    shadow = ShadowEmitter(shadow_observer) if shadow_observer is not None else None
     core = MCPServer(
         MCPServerDependencies(
             router=ComboRouter(LocalBridgeRunner(), DirectoryLeaseManager()),
@@ -27,6 +35,7 @@ def build_stdio_server(
             verifier=verify,
             profile_resolver=resolve_service_profile,
             control_factory=CancellationToken,
+            shadow_emitter=shadow,
         )
     )
     streams = transport or StdioTransport(sys.stdin, sys.stdout, sys.stderr)

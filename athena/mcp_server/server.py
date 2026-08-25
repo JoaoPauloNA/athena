@@ -6,7 +6,7 @@ import uuid
 from dataclasses import replace
 from typing import Any
 
-from athena.execution import ExecutionState
+from athena.execution import ExecutionDeadlines, ExecutionRecord, ExecutionState
 from athena.registry import RequestId
 from athena.router import AllAttemptsFailed, ComboRequest
 from athena.verifier import VerificationRequest, VerificationResult
@@ -64,11 +64,45 @@ def _verification_payload(result: VerificationResult) -> dict[str, Any]:
     }
 
 
+def _record_for_shadow(execution_id: str, result: Any) -> ExecutionRecord:
+    """Reconstruir um record mínimo e sanitizado só para o emissor shadow."""
+    record = ExecutionRecord(
+        getattr(result, "provider", "unknown"),
+        profile="shadow",
+        execution_id=execution_id,
+        deadlines=ExecutionDeadlines(),
+    )
+    # resultado já é terminal; transição direta ao estado final observado
+    try:
+        state = getattr(result, "state", None)
+        target = ExecutionState(state.value) if hasattr(state, "value") else ExecutionState.FAILED
+        for intermediate in (ExecutionState.STARTING, ExecutionState.RUNNING):
+            if target in _ALLOWED_FROM.get(intermediate, frozenset()):
+                record.transition(intermediate)
+    except Exception as exc:  # noqa: BLE001 - reconstrução best-effort; falha não emite
+        _shadow_rebuild_failures.append(f"{type(exc).__name__}")
+    try:
+        record.transition(ExecutionState(result.state.value))
+    except Exception as exc:  # noqa: BLE001 - idem: falha de reconstrução só conta
+        _shadow_rebuild_failures.append(f"{type(exc).__name__}")
+    return record
+
+
+_shadow_rebuild_failures: list[str] = []
+
+
+_ALLOWED_FROM: dict[ExecutionState, frozenset[ExecutionState]] = {
+    ExecutionState.STARTING: frozenset({ExecutionState.QUEUED}),
+    ExecutionState.RUNNING: frozenset({ExecutionState.STARTING}),
+}
+
+
 class MCPServer:
     """Adaptar tools MCP aos contratos do nucleo, sem abrir rede ou processo."""
 
     def __init__(self, dependencies: MCPServerDependencies) -> None:
         self._dependencies = dependencies
+        self._shadow = getattr(dependencies, "shadow_emitter", None)
 
     def run_combo(
         self,
@@ -169,6 +203,11 @@ class MCPServer:
         self._dependencies.registry.update_attempt(
             execution_id, _attempt_snapshot(result)
         )
+        if self._shadow is not None and result is not None:
+            self._shadow.emit_transition(
+                _record_for_shadow(execution_id, result), result.state,
+                cancelled_by_client=False,
+            )
         verification_result = None
         if verification is not None:
             try:

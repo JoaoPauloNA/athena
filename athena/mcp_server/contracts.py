@@ -42,6 +42,7 @@ class MCPServerDependencies:
     verifier: Verifier
     profile_resolver: ProfileResolverContract
     control_factory: ControlFactory
+    shadow_emitter: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
