@@ -9,7 +9,7 @@
 
 ## Estado comprovado
 - Publicação remota concluída em 2026-08-22: `origin/main` e `main` local estão em `9ab50eb`, incluindo Fix A e Fix C. O `Athena-beta` foi corretamente repromovido e permanece ativo localmente.
-- Última atualização: 2026-08-21.
+- Última atualização: 2026-08-26.
 - A CI foi validada em `d3e191a028f0de751994af2bf4c28566f7ff7837` e o handoff documental da fatia anterior foi publicado em `62fb03b` em `origin/main`. O remoto monolítico antigo foi reconciliado por force-push autorizado.
 - Preservar as branches locais antigas `athena-release-20260814` e `fix/p0-audit-20260815`; não as excluir sem decisão explícita.
 - A fatia de CI está **FECHADA**. O GitHub Actions run `32435500126` passou em Ubuntu e macOS, com Python 3.11 e 3.12.
@@ -122,9 +122,57 @@
 - **S-03** (`42a12ca`): README.md + README as-built criados do zero (a raiz não os possuía), CHANGELOG iniciado, versão **0.2.0** aplicada por SemVer em `pyproject.toml`. Gate P0 verde após a mudança.
 - **S-04/S-05 — Fix B fechado como validação estrita mantida**: servidor MCP sintético temporário (`harness/s04_synthetic_server.py`) com o mesmo schema, registrando apenas `typeof` dos argumentos (nunca valores). Matriz executada [AO VIVO 2026-08-24]: 4 chamadas com `overall_timeout_s` number/integer/string e `profile` string → contadores confirmam que strings são detectáveis e que nenhum cliente real registrado na máquina as envia espontaneamente (as ocorrências string na matriz foram injetadas de propósito como casos de teste). O validador estrito de `ComboRequest` permanece correto; coerção só entra se o contador registrar `overall_timeout_s:string` ou `profile:<não-string>` em uso real. Servidor sintético é temporário, sem registro permanente.
 - **S-06** (`b9eaa97`, 2026-08-24): beta repromovido para a HEAD publicada (fast-forward `698ae47`→`b9eaa97`). Probes de smoke executados ao vivo no binário do beta com cwd do checkout: (1) `tools/list` declara exatamente 5 tools com tipos simples (`overall_timeout_s: {type: number, exclusiveMinimum: 0}`); (2) `run_combo` com `sleep 5`/`overall_timeout_s=2` retornou em ~2,03 s `isError:true` com payload sanitizado (`state: timed_out`, `exit_code: -15`, `expired_deadline: absolute_deadline`). **v1 candidata interna fechada.**
-- **EG-1/EG-GATE** (`74bb51b`, 2026-08-25): motor Evidence Gate offline em `athena/evidence_gate/` — validação determinística de Result Envelopes (schema → cobertura critério↔check → evidência autorizada → consistência status×exit), veredito PASS/FAIL/INCONCLUSIVE/ESCALATE com precedência da política v0.1. Conjunto adversarial RESERVADO com zero falso PASS (13 testes). EG-2..4 (integração + evaluator por exceção) aguardam decisão de integração na surface MCP.
+- **EG-1/EG-GATE** (`74bb51b`, 2026-08-25): motor Evidence Gate offline em `athena/evidence_gate/` — validação determinística de Result Envelopes (schema → cobertura critério↔check → evidência autorizada → consistência status×exit), veredito PASS/FAIL/INCONCLUSIVE/ESCALATE com precedência da política v0.1. Conjunto adversarial RESERVADO com zero falso PASS (13 testes).
+- **EG-3/EG-4 — decisão documental canônica (Vault, 2026-08-26)**: EG-3A será um pipeline interno opt-in de finalização de artefato, mantendo intactas as cinco tools MCP; EG-3B fica reservado para eventual exposição pública versionada; EG-4A é somente advisory, não pode emitir nem converter resultado em `PASS`; a saída permanece `awaiting_human_review`. Essa decisão resolve o desenho, mas não transforma o Evidence Gate em integração implementada: `evaluate_result` continua órfão no runtime até a fatia de implementação ser aberta. Fonte canônica: `Projetos/Carreira/Athena/Evidence-Gate-Integracao-EG3-EG4.md` no Vault.
 - **D-SSH/D-WIN/D-HA** (2026-08-24, decisão do guardião): SSH permanece **dormente** (pacote fechado/testado, sem consumidor); **macOS e Linux são os sistemas oficiais** — meta tripla-SO rejeitada formalmente; `REQUIRES_HUMAN_APPROVAL` permanece **reservado** no Aegis até existir desenho de pausa/retomada. Revisar apenas se surgir demanda real.
 - Os dois servidores MCP registrados na máquina do usuário (`athena-mcp-beta` no Claude Desktop, `athena` no Codex Desktop) apontam para o binário do `Athena-beta`.
 - Não reabrir a fatia de CI para resolver fragilidades ou suporte a Windows; registrar e sequenciar esses trabalhos separadamente.
 - Se algum fluxo futuro precisar SSH remota no núcleo novo, abrir uma fatia própria de contrato antes de qualquer implementação.
 - O teste multi-provider foi fechado em 2026-08-22 com Codex2 como tentativa 1 e Claude como fallback confirmado. Não reexecutar por rotina; abrir nova fatia apenas se houver mudança de bridge, provider ou política de fallback.
+
+## Modelo operacional dos chats-gerentes — mente principal e braço executor (2026-08-26)
+
+### Decisão de papéis
+
+- O **Codex principal** e o **Claude principal** são os dois chats-gerentes do Athena. Eles mantêm estratégia, arquitetura, decisões, priorização, desenho de prompts, revisão crítica e aprovação técnica.
+- Este arquivo é o ponto de sincronização entre os dois chats. Antes de orientar uma nova fatia, ambos devem reler `contexto/INDEX.md`, `contexto/ESTADO_ATUAL.md`, `contexto/ROADMAP.md`, `contexto/CLAUDE_ORQUESTRADOR.md` e este `gerencia_athena-mcp.md`.
+- **Hermes Agent + `z-ai/glm-5.3-flash` via OpenRouter** passa a ser o braço executor preferencial para leitura extensa, documentação, alterações delimitadas, implementação, testes e trabalho repetitivo com alto consumo de tokens.
+- Esse braço substitui **Codex2 e Claude2 como mão de obra padrão**, mas não substitui o Codex principal nem o Claude principal como gerentes e mentes de decisão.
+- Esta é uma regra operacional dos gerentes; não significa que Hermes ou GLM já integrem o runtime do Athena-MCP.
+
+### Evidência do piloto
+
+- Piloto de auditoria somente leitura concluído em 2026-08-26 com o GLM 5.3 Flash em configuração padrão, sem ajuste explícito de thinking ou esforço.
+- Consumo observado aproximado: 337 mil tokens de entrada, 10.994 tokens de saída e custo de cerca de **US$ 0,0114** para a tarefa; incluindo sondas curtas anteriores, o painel indicou **US$ 0,0144**.
+- O relatório foi tecnicamente útil, mas limitado pelo contexto entregue: sua recomendação seguinte divergiu da decisão canônica já registrada para EG-3A/EG-4A. Portanto, baixo custo e bom volume não concedem autoridade arquitetural.
+- **Auditoria somente leitura** e **escrita documental + Canvas sob revisão de gerente** estão aprovadas. O piloto documental exigiu uma correção semântica: o primeiro Canvas misturou comportamento implementado e planejado no mesmo nó e citou um commit inexistente; a revisão independente detectou o problema e a correção foi validada. Implementação com testes, recuperação limitada e continuidade em sessão longa ainda precisam de pilotos próprios antes de virarem rotas aprovadas.
+
+### Contrato de despacho
+
+1. O chat-gerente define uma única fatia com objetivo, arquivos permitidos, proibições, critério de saída e teto de custo.
+2. O prompt do executor deve ser em inglês e mandar ler primeiro o contexto canônico relacionado à tarefa.
+3. O Hermes/GLM executa somente a fatia autorizada, preserva alterações existentes e não amplia silenciosamente o escopo.
+4. A execução deve retornar exatamente os 10 tópicos padronizados: feito, arquivos alterados, arquivos analisados, não alterado, testes, resultados, pendências, riscos, status `OK`/`FALHA` e próximo passo.
+5. Um dos chats-gerentes confronta o relatório com Git, testes, artefatos e contexto antes de aceitar progresso ou emitir nova tarefa.
+6. Divergência com o contexto canônico, relatório vazio, ausência de evidência ou três falhas pela mesma causa interrompem o fluxo e retornam a decisão ao gerente.
+
+### Autoridade do braço executor
+
+- **Pode, quando o prompt autorizar explicitamente:** ler arquivos, produzir documentação, editar somente o escopo nomeado, implementar código delimitado, executar testes proporcionais e realizar correções limitadas pela mesma causa.
+- **Não pode decidir sozinho:** arquitetura, contrato público ou MCP, migração, exclusão de dados, credenciais e segurança, publicação, commit, push, release, deploy, custo recorrente, expansão de escopo ou mudança de prioridade/WIP.
+- O executor nunca supera o Vault canônico, o código real, os testes ou a decisão dos chats-gerentes. Quando houver conflito, deve registrar `BLOCKED` com a fonte divergente.
+
+### Orçamento e roteamento
+
+- Saldo declarado para o experimento em 2026-08-26: **US$ 20 no OpenRouter** e **US$ 20 na API da OpenAI**. Esses valores são informação operacional declarada pelo usuário, não conciliação financeira automática.
+- O limite inicial da chave de teste do OpenRouter é **US$ 1, sem renovação automática**. Nunca registrar a chave, token ou outro segredo neste arquivo.
+- Meta de avaliação: verificar se o Hermes/GLM sustenta a mão de obra por aproximadamente **US$ 20–30/mês**. Isso ainda é hipótese de orçamento, não compromisso recorrente.
+- Custo final observado da sessão documental, incluindo correção no mesmo contexto: **US$ 0,136**. A correção incremental custou aproximadamente **US$ 0,022** sobre os US$ 0,114 da primeira entrega.
+- O teto escrito no prompt não é controle financeiro efetivo: o executor ultrapassou em 14% o limite indicativo de US$ 0,10 porque o custo acumulado não estava disponível ao modelo durante a execução. Limites futuros devem ser aplicados externamente no Hermes, OpenRouter ou middleware; o prompt apenas informa intenção.
+- A API da OpenAI permanece como fallback ou verificador independente quando a dificuldade justificar; não deve ser consumida automaticamente só por estar disponível.
+- Modelos de fronteira dos chats principais ficam reservados para decisões, arquitetura, prompts, impasses e revisão de alto valor.
+
+### Próximo gate
+
+- A rota de **documentação + Canvas** está aprovada com revisão posterior obrigatória por um chat-gerente e validações determinísticas de JSON, IDs, arestas, hashes e referências Git.
+- Próximo piloto ainda não aprovado: **implementação delimitada + testes**, preservando WIP=1, sem commit/push e com revisão independente antes de aceitar o relatório.
