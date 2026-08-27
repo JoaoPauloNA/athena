@@ -103,6 +103,8 @@ class MCPServer:
     def __init__(self, dependencies: MCPServerDependencies) -> None:
         self._dependencies = dependencies
         self._shadow = getattr(dependencies, "shadow_emitter", None)
+        self._artifact_finalizer = getattr(
+            dependencies, "artifact_finalizer", None)
 
     def run_combo(
         self,
@@ -220,10 +222,31 @@ class MCPServer:
                 )
                 raise
         self._dependencies.registry.finalize(execution_id, state=result.state.value)
+        eg3a_report = None
+        if self._artifact_finalizer is not None:
+            try:
+                envelope = {
+                    "schema_version": "0.1",
+                    "task_id": f"{tool}:{execution_id[:8]}",
+                    "attempt_id": execution_id,
+                    "declared_status": result.state.value,
+                    "claims": [], "checks": [], "artifacts": [],
+                    "telemetry": {"exit_code": result.exit_code,
+                                  "duration_s": getattr(result, "duration_s", None),
+                                  "executor_id": tool},
+                }
+                eg3a_report = self._artifact_finalizer(envelope)
+            except Exception:  # noqa: BLE001 - pipeline nunca quebra a execução
+                eg3a_report = {"pipeline": "eg3a", "ran": True,
+                               "validation_status": "escalate",
+                               "delivery_status": "awaiting_human_review",
+                               "error": "finalization_error_sanitized"}
         payload: dict[str, Any] = {
             "execution_id": execution_id,
             "result": _result_payload(result),
         }
+        if eg3a_report is not None:
+            payload["evidence_gate"] = eg3a_report
         if verification_result is not None:
             payload["verification"] = _verification_payload(verification_result)
         return payload

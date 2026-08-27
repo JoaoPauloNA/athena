@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from athena.bridge import LocalBridgeRunner
@@ -28,6 +29,14 @@ def build_stdio_server(
     """
     registry = ExecutionRegistry()
     shadow = ShadowEmitter(shadow_observer) if shadow_observer is not None else None
+    # EG-3A: finalizador injetado APENAS com opt-in explícito (env).
+    # A composição conhece o motor; o server recebe só o callable.
+    artifact_finalizer = None
+    if os.environ.get("ATHENA_EG3A") == "1":
+        from athena.evidence_gate.pipeline_eg3a import finalize_artifact
+
+        def artifact_finalizer(envelope: dict) -> dict:  # noqa: E704
+            return finalize_artifact(envelope, opt_in=True)
     core = MCPServer(
         MCPServerDependencies(
             router=ComboRouter(LocalBridgeRunner(), DirectoryLeaseManager()),
@@ -36,6 +45,7 @@ def build_stdio_server(
             profile_resolver=resolve_service_profile,
             control_factory=CancellationToken,
             shadow_emitter=shadow,
+            artifact_finalizer=artifact_finalizer,
         )
     )
     streams = transport or StdioTransport(sys.stdin, sys.stdout, sys.stderr)
