@@ -110,6 +110,29 @@ class ZeusRegistry:
 
     # --------------------------------------------------------- serialização
 
+    def export_all(self) -> dict[str, Any]:
+        """Estado completo (todas as versões + transições) para persistência."""
+        if self._current is None:
+            raise RuntimeError("registro vazio: nada a exportar")
+        versions = {
+            v: [
+                {
+                    "agent_id": a.agent_id,
+                    "persona_id": a.persona_id,
+                    "registry_version": a.registry_version,
+                    "capabilities": sorted(a.capabilities),
+                    "runtime_class": a.runtime_class,
+                    "lifecycle": a.lifecycle,
+                    "prohibited_authorities": sorted(a.prohibited_authorities),
+                }
+                for a in (self._versions[v][k] for k in sorted(self._versions[v]))
+            ]
+            for v in sorted(self._versions)
+        }
+        return {"current": self._current,
+                "versions": versions,
+                "transitions": list(self._transitions)}
+
     def to_json_dict(self, version: str | None = None) -> dict[str, Any]:
         snap = self.snapshot(version)
         return {
