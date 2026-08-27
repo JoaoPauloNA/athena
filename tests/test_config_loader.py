@@ -29,11 +29,20 @@ def config_dir(tmp_path: Path) -> Path:
     return tmp_path / ".athena"
 
 
+def _spec(**over):
+    b = {"mode": "local", "runtime_class": "local",
+         "base_url": "http://127.0.0.1:11434", "enabled": True, "approved": True}
+    b.update(over)
+    return b
+
+
 def _write_parts(cd: Path, providers=None, functions=None):
     cd.mkdir(parents=True, exist_ok=True)
+    base = {"enabled": True, "approved": True, "runtime_class": "local"}
     providers = providers or {
-        "ollama": {"mode": "local", "base_url": "http://127.0.0.1:11434"},
-        "claude-cli": {"mode": "agent_cli", "command": "claude"},
+        "ollama": {**base, "mode": "local",
+                   "base_url": "http://127.0.0.1:11434"},
+        "claude-cli": {**base, "mode": "agent_cli", "command": "claude"},
     }
     functions = functions or {
         "condensar-contexto": {"specialist": "context-condenser",
@@ -54,21 +63,23 @@ def test_carga_valida_completa(config_dir):
     _write_parts(config_dir)
     _persona_bundle(config_dir)  # bundle existe
     cfg = load_config(config_dir)
-    assert cfg["schema_version"] == "athena.config.v1"
-    assert "ollama" in cfg["parts"]["providers"]
+    assert cfg["schema_version"] == "athena.config.v1.1"
+    assert "ollama" in cfg["providers"]
 
 
 def test_segredo_valor_proibido(config_dir):
-    bad = {"cliproxy": {"mode": "api",
+    bad = {"cliproxy": {"mode": "api", "runtime_class": "frontier",
                         "base_url": "http://127.0.0.1:8317/v1",
+                        "enabled": True, "approved": True,
                         "api_key": "sk-fake"}}
     with pytest.raises(ValueError, match="segredo"):
         validate_providers(bad)
 
 
 def test_secret_ref_permitido(config_dir):
-    ok = {"cliproxy": {"mode": "api",
+    ok = {"cliproxy": {"mode": "api", "runtime_class": "frontier",
                        "base_url": "http://127.0.0.1:8317/v1",
+                       "enabled": True, "approved": True,
                        "secret_ref": "keychain:athena-cliproxy"}}
     validate_providers(ok)  # não levanta
 
@@ -76,19 +87,16 @@ def test_secret_ref_permitido(config_dir):
 def test_hash_divergente_recusa_carga_inteira(config_dir):
     _write_parts(config_dir)
     _persona_bundle(config_dir)
+    before = (config_dir / "providers.json").read_text()
     # corromper uma parte DEPOIS do snapshot
-    p = config_dir / "providers.json"
-    doc = json.loads(p.read_text())
-    doc["novo-provider"] = {"mode": "local", "base_url": "http://127.0.0.1:9"}
-    p.write_text(json.dumps(doc))
+    doc = json.loads(before)
+    doc["novo-provider"] = _spec(base_url="http://127.0.0.1:9")
+    (config_dir / "providers.json").write_text(json.dumps(doc))
     with pytest.raises(ConfigLoadError, match="hash divergente"):
         load_config(config_dir)
-    # e a carga anterior continua válida depois que a parte volta ao hash
-    p.write_text(json.dumps({
-        "ollama": {"mode": "local", "base_url": "http://127.0.0.1:11434"},
-        "claude-cli": {"mode": "agent_cli", "command": "claude"},
-    }))
-    assert load_config(config_dir)["parts"]["providers"]  # snapshot anterior ativo
+    # restaurar os bytes EXATOS originais → hash volta a bater
+    (config_dir / "providers.json").write_text(before)
+    assert load_config(config_dir)["providers"]  # snapshot anterior ativo
 
 
 def test_parte_ausente_recusa(config_dir):
@@ -117,7 +125,9 @@ def test_modo_invalido_recusa(config_dir):
         load_config(config_dir)
 
 
-def test_descoberta_nao_habilita():
-    """Estados DISCOVERED/ENABLED nunca são derivados automaticamente."""
-    from athena.config_loader import ALLOWED_ADMIN_STATES
-    assert set(ALLOWED_ADMIN_STATES) == {"DISCOVERED", "ENABLED", "HEALTHY", "APPROVED"}
+def test_estados_separados():
+    """Desejado (providers) e observado (inventory) são validados separadamente."""
+    from athena.config_loader import load_observed, provider_eligible
+    assert load_observed(Path("/tmp/inexistente-xyz")) == []
+    ok, reason = provider_eligible(_spec(), None)
+    assert not ok and reason == "PROVIDER_UNHEALTHY"
