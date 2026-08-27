@@ -36,6 +36,9 @@ REASON_CODES = {
     # restrições
     "HIGH_RISK_HUMAN_REVIEW": "risco alto exige revisão humana independente da rota",
     "PROHIBITED_AUTHORITY_REQUESTED": "tarefa pede autoridade proibida à persona",
+    # Z-REALIGN v2 — Nike
+    "RUNTIME_RESOLVED_BY_NIKE": "runtime concreto resolvido pela Nike contra providers.json",
+    "ABSTAIN_NO_CAPABLE_PROVIDER": "nenhum provider elegível satisfaz o requisito do especialista",
 }
 
 # ordem canônica das razões na decisão (determinismo de serialização)
@@ -53,6 +56,8 @@ REASON_ORDER = [
     "THEMIS_EVIDENCE_SUFFICIENT",
     "RUNTIME_FRONTIER_REQUIRED",
     "RUNTIME_LOCAL_ELIGIBLE",
+    "RUNTIME_RESOLVED_BY_NIKE",
+    "ABSTAIN_NO_CAPABLE_PROVIDER",
 ]
 
 
