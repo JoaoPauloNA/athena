@@ -13,8 +13,25 @@ from athena.router import ComboRequest, ComboRouterContract
 from athena.verifier import VerificationRequest, VerificationResult
 
 ToolPayload: TypeAlias = Mapping[str, Any]
+ArtifactReport: TypeAlias = Mapping[str, Any]
 ControlFactory: TypeAlias = Callable[[], ExecutionControl]
 Verifier: TypeAlias = Callable[[VerificationRequest, ExecutionControl], VerificationResult]
+ArtifactFinalizer: TypeAlias = Callable[[dict[str, Any]], ArtifactReport]
+
+
+@runtime_checkable
+class ArtifactSinkContract(Protocol):
+    """Receber um relatório interno sem alterar o contrato público MCP."""
+
+    def __call__(
+        self,
+        report: ArtifactReport,
+        *,
+        execution_id: str,
+        tool: str,
+    ) -> None:
+        """Persistir ou encaminhar um relatório já sanitizado."""
+        ...
 
 
 @runtime_checkable
@@ -43,7 +60,8 @@ class MCPServerDependencies:
     profile_resolver: ProfileResolverContract
     control_factory: ControlFactory
     shadow_emitter: object | None = None
-    artifact_finalizer: object | None = None
+    artifact_finalizer: ArtifactFinalizer | None = None
+    artifact_sink: ArtifactSinkContract | None = None
 
 
 @dataclass(frozen=True, slots=True)

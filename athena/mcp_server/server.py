@@ -105,6 +105,8 @@ class MCPServer:
         self._shadow = getattr(dependencies, "shadow_emitter", None)
         self._artifact_finalizer = getattr(
             dependencies, "artifact_finalizer", None)
+        self._artifact_sink = getattr(dependencies, "artifact_sink", None)
+        self._artifact_delivery_failures = 0
 
     def run_combo(
         self,
@@ -222,8 +224,7 @@ class MCPServer:
                 )
                 raise
         self._dependencies.registry.finalize(execution_id, state=result.state.value)
-        eg3a_report = None
-        if self._artifact_finalizer is not None:
+        if self._artifact_finalizer is not None and self._artifact_sink is not None:
             try:
                 envelope = {
                     "schema_version": "0.1",
@@ -235,18 +236,18 @@ class MCPServer:
                                   "duration_s": getattr(result, "duration_s", None),
                                   "executor_id": tool},
                 }
-                eg3a_report = self._artifact_finalizer(envelope)
-            except Exception:  # noqa: BLE001 - pipeline nunca quebra a execução
-                eg3a_report = {"pipeline": "eg3a", "ran": True,
-                               "validation_status": "escalate",
-                               "delivery_status": "awaiting_human_review",
-                               "error": "finalization_error_sanitized"}
+                report = self._artifact_finalizer(envelope)
+                self._artifact_sink(
+                    report,
+                    execution_id=execution_id,
+                    tool=tool,
+                )
+            except Exception:  # noqa: BLE001 - sink interno nunca quebra a execução
+                self._artifact_delivery_failures += 1
         payload: dict[str, Any] = {
             "execution_id": execution_id,
             "result": _result_payload(result),
         }
-        if eg3a_report is not None:
-            payload["evidence_gate"] = eg3a_report
         if verification_result is not None:
             payload["verification"] = _verification_payload(verification_result)
         return payload

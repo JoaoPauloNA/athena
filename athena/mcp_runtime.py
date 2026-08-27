@@ -29,14 +29,23 @@ def build_stdio_server(
     """
     registry = ExecutionRegistry()
     shadow = ShadowEmitter(shadow_observer) if shadow_observer is not None else None
-    # EG-3A: finalizador injetado APENAS com opt-in explícito (env).
-    # A composição conhece o motor; o server recebe só o callable.
+    # EG-3A: finalizador e sink local exigem opt-in e diretório explícitos.
+    # A composição conhece as implementações; o server recebe só contratos.
     artifact_finalizer = None
+    artifact_sink = None
     if os.environ.get("ATHENA_EG3A") == "1":
         from athena.evidence_gate.pipeline_eg3a import finalize_artifact
+        from athena.evidence_gate.sink import AtomicJsonFileSink
 
-        def artifact_finalizer(envelope: dict) -> dict:  # noqa: E704
-            return finalize_artifact(envelope, opt_in=True)
+        sink_directory = os.environ.get("ATHENA_EG3A_SINK_DIR")
+        if sink_directory:
+            try:
+                artifact_sink = AtomicJsonFileSink(sink_directory)
+            except (OSError, ValueError):
+                artifact_sink = None
+        if artifact_sink is not None:
+            def artifact_finalizer(envelope: dict) -> dict:  # noqa: E704
+                return finalize_artifact(envelope, opt_in=True)
     core = MCPServer(
         MCPServerDependencies(
             router=ComboRouter(LocalBridgeRunner(), DirectoryLeaseManager()),
@@ -46,6 +55,7 @@ def build_stdio_server(
             control_factory=CancellationToken,
             shadow_emitter=shadow,
             artifact_finalizer=artifact_finalizer,
+            artifact_sink=artifact_sink,
         )
     )
     streams = transport or StdioTransport(sys.stdin, sys.stdout, sys.stderr)
