@@ -2,25 +2,21 @@
 
 ## SNAPSHOT ATUAL (2026-08-30)
 
-- HEAD = origin/main = **`5319763`** · worktree limpo
-- **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
-- **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
-- **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
-- Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
-- D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)
-- D2–D15: evidência de suíte focais/componentes/integração (não todas e2e)
-- Sem WIP ativo após esta fatia de documentação
-- Bloqueios externos: corpus CG-0 humano · login zchat/kimi · aceite externo v1
-- Arquivos protegidos hash-verificados (`db8885c0…`/`da123ab4…`)
-> **Histórico abaixo**: valores de HEAD/remotes anteriores a `5319763` são históricos.
-
-
+- **Runtime baseline de evidência:** `5319763` — P0 lint/boundaries/p0 `PASS`; suíte completa protegida `715 passed, 3 deselected`; sete tools MCP.
+- **Commits documentais anteriores:** `a96c2e1` e `ee13dad`. Eles reconciliam documentação; não substituem a baseline de runtime.
+- O repositório estava limpo e alinhado com `origin/main` quando inspecionado. **O HEAD corrente deve ser sempre verificado diretamente pelo Git**; este documento não fixa o hash do commit que o altera.
+- D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed).
+- D2–D15: evidência de suítes focais, componentes e integração; nem todas são e2e.
+- Sem WIP ativo após a reconciliação documental canônica.
+- Bloqueios externos: corpus humano CG-0 · login manual zchat/kimi · aceite externo v1.
+- Arquivos protegidos permaneceram fora do escopo e foram preservados.
+> **Histórico abaixo:** hashes, contagens e gates anteriores permanecem somente como checkpoints datados; não representam o HEAD corrente.
 
 ## Último gate fechado
 
-- `ARGOS-1 — Browser QA real e seguro`: **COMPLETED** em 2026-08-30.
-- Contrato normativo: `contexto/ARGOS-1-CONTRATO.md`.
-- WIP=1: INT-ALE-0, THEMIS-1 e ARGOS-1 estão fechadas; nenhuma fatia ativa.
+- **Reconciliação documental canônica:** **FECHADA** em 2026-08-30, com substituição dos trechos ativos contraditórios em vez de simples anexação de notas novas.
+- Evidência documental anterior: commits `a96c2e1` e `ee13dad`; o commit desta correção deve ser consultado pelo Git, não embutido neste arquivo.
+- **Checkpoints históricos já fechados:** INT-ALE-0, THEMIS-1 e ARGOS-1. Nenhuma dessas fatias é o gate mais recente.
 
 Este é o handoff curto para Claude principal ou Codex principal. O gerente ativo decide, delimita e revisa; o executor trabalha apenas na fatia explícita e não ganha autoridade arquitetural.
 
@@ -33,9 +29,9 @@ Este é o handoff curto para Claude principal ou Codex principal. O gerente ativ
 
 ## Handoff atual
 
-- Última fatia fechada: `INT-ALE-0 — integração Aletheia ↔ Athena`, `CONCLUÍDA` em 2026-08-30 após reparo P0 e validação independente. Evidência: P0 `PASS`; suíte Athena `-m "not regression"` excl. `test_api_mode.py` `715 passed, 3 deselected`; duplicate-id stdio `5/5`; cross-repo Aletheia `24 passed`; suíte Aletheia `97 passed`; hashes protegidos inalterados.
-- Limite exato de INT-ALE-0: fallback não autoritativo só sem `snapshot.json`; flag de modelo fixa `--model`; Themis e Argos não alterados.
-- THEMIS-1 fechou o núcleo v0.2 separado com eventos append-only, eixos distintos, incerteza e contrato Nike real (`54 passed`). ARGOS-1 fechou o MVP observacional separado em Chromium real, com escopo de rede interceptado, evidência PNG e recursos/prazo limitados (`28 passed`). Nenhum deles foi integrado automaticamente à surface MCP.
+- Última fatia fechada: **reconciliação documental canônica**, concluída em 2026-08-30 após revisão semântica das seções ativas e validação das referências Git.
+- **Checkpoint histórico — INT-ALE-0:** integração Aletheia ↔ Athena concluída após reparo P0 e validação independente; fallback não autoritativo somente sem `snapshot.json` e flag de modelo fixa `--model`.
+- **Checkpoints históricos — THEMIS-1 e ARGOS-1:** Themis v0.2 separado com `54 passed`; Argos observacional separado com `28 passed` e smoke real. Esses checkpoints antecedem a reconciliação documental atual.
 - PERF-0 e PERF-1 permanecem fechados.
 - Limite exato de PERF-1: o sentinel fecha conservadoramente para descendentes ordinários que preservam o FD interno herdado; não se afirma detecção de processo que, deliberadamente ou por política própria, feche todos os FDs herdados desconhecidos.
 - Limite exato de CFG-SEC-0: `write_snapshot` ancora a operação no descritor de diretório após `os.open(config_dir)`; a janela portátil residual é a substituição de um diretório ancestral imediatamente antes dessa abertura. Não há transação POSIX que abranja arquivos de partes independentes publicados por um escritor cooperante externo antes da chamada.
