@@ -29,8 +29,11 @@ from .posix import (
 if os.name == "posix":
     import pty
 
-_POLL_INTERVAL_S = 0.02
+_SIGNAL_WAIT_S = 0.05
+_DESCENDANT_INITIAL_DELAY_S = 0.1
+_DESCENDANT_INTERVAL_S = 0.5
 _READER_JOIN_S = 0.25
+_WAITER_JOIN_S = 0.25
 
 
 def _read_pipe(stream: BinaryIO, chunks: list[bytes], execution: ExecutionRecord) -> None:
@@ -72,6 +75,34 @@ def _decode(chunks: list[bytes]) -> str:
     return b"".join(chunks).decode("utf-8", errors="replace")
 
 
+def _wait_for_process(
+    process: subprocess.Popen[bytes], completion: threading.Event
+) -> None:
+    """Block on native process completion and wake the bounded supervisor."""
+    try:
+        process.wait()
+    finally:
+        completion.set()
+
+
+def _inherited_lifetime_closed(fd: int | None) -> bool:
+    """Return whether every process preserving the sentinel has closed it.
+
+    This is a cooperative lifetime proof for ordinary forked descendants that
+    preserve inherited descriptors. A process that deliberately, or by its own
+    close-fds policy, closes every unknown inherited descriptor is outside this
+    proof and must not be claimed as detected by the sentinel alone.
+    """
+    if fd is None:
+        return True
+    try:
+        return os.read(fd, 1) == b""
+    except BlockingIOError:
+        return False
+    except OSError:
+        return False
+
+
 class LocalBridgeRunner:
     """Executar comandos locais sob lease, deadlines e teardown controlado."""
 
@@ -91,8 +122,12 @@ class LocalBridgeRunner:
         stdout_chunks: list[bytes] = []
         stderr_chunks: list[bytes] = []
         readers: list[threading.Thread] = []
+        waiter: threading.Thread | None = None
+        process_completed = threading.Event()
         master_fd: int | None = None
         slave_fd: int | None = None
+        lifetime_read_fd: int | None = None
+        lifetime_write_fd: int | None = None
         expired: DeadlineKind | None = None
         error: str | None = None
 
@@ -124,7 +159,7 @@ class LocalBridgeRunner:
                 )
 
             execution.transition(ExecutionState.STARTING)
-            environment = os.environ.copy()
+            environment = os.environ.copy() if request.inherit_environment else {}
             environment.update(request.env)
             environment["PWD"] = str(cwd)
             popen_kwargs: dict[str, object] = {
@@ -143,7 +178,14 @@ class LocalBridgeRunner:
                     stderr=subprocess.PIPE,
                     stdin=subprocess.DEVNULL,
                 )
+            if os.name == "posix":
+                lifetime_read_fd, lifetime_write_fd = os.pipe()
+                os.set_blocking(lifetime_read_fd, False)
+                popen_kwargs["pass_fds"] = (lifetime_write_fd,)
             process = subprocess.Popen(command, **popen_kwargs)  # type: ignore[arg-type]
+            if lifetime_write_fd is not None:
+                os.close(lifetime_write_fd)
+                lifetime_write_fd = None
             if slave_fd is not None:
                 os.close(slave_fd)
                 slave_fd = None
@@ -176,19 +218,21 @@ class LocalBridgeRunner:
             for reader in readers:
                 reader.start()
 
+            waiter = threading.Thread(
+                target=_wait_for_process,
+                args=(process, process_completed),
+                daemon=True,
+            )
+            waiter.start()
+
             escaped_seen: set[int] = set()
             descendants_seen: set[int] = set()
             process_group = process.pid if os.name == "posix" else None
+            next_descendant_inspection = (
+                time.monotonic() + _DESCENDANT_INITIAL_DELAY_S
+            )
             while True:
-                if process_group is not None:
-                    descendants_seen, escaped_now = observe_descendants(
-                        process.pid,
-                        process_group,
-                        descendants_seen,
-                    )
-                    escaped_seen.update(escaped_now)
-                return_code = process.poll()
-                if return_code is not None:
+                if process_completed.is_set():
                     break
                 if control is not None and control.cancellation_requested:
                     error = control.cancel_reason or "cancelled"
@@ -197,18 +241,46 @@ class LocalBridgeRunner:
                 if expired is not None:
                     error = expired.value
                     break
-                time.sleep(_POLL_INTERVAL_S)
+
+                now = time.monotonic()
+                if process_group is not None and now >= next_descendant_inspection:
+                    descendants_seen, escaped_now = observe_descendants(
+                        process.pid,
+                        process_group,
+                        descendants_seen,
+                    )
+                    escaped_seen.update(escaped_now)
+                    next_descendant_inspection = now + _DESCENDANT_INTERVAL_S
+
+                wait_s = _SIGNAL_WAIT_S
+                if process_group is not None:
+                    wait_s = min(
+                        wait_s,
+                        max(0.0, next_descendant_inspection - time.monotonic()),
+                    )
+                process_completed.wait(timeout=wait_s)
 
             termination_requested = error is not None
             direct_confirmed = process.poll() is not None
             group_confirmed = process_group is None
             if process_group is not None:
-                if termination_requested or not process_group_is_empty(process_group):
-                    direct_confirmed, group_confirmed = terminate_owned_group(
-                        process,
+                group_is_empty = process_group_is_empty(process_group)
+                lifetime_closed = _inherited_lifetime_closed(lifetime_read_fd)
+                if termination_requested or not group_is_empty or not lifetime_closed:
+                    descendants_seen, escaped_now = observe_descendants(
+                        process.pid,
                         process_group,
-                        grace_s=request.termination_grace_s,
+                        descendants_seen,
                     )
+                    escaped_seen.update(escaped_now)
+                    if termination_requested or not group_is_empty:
+                        direct_confirmed, group_confirmed = terminate_owned_group(
+                            process,
+                            process_group,
+                            grace_s=request.termination_grace_s,
+                        )
+                    else:
+                        group_confirmed = True
                 else:
                     group_confirmed = True
 
@@ -217,11 +289,13 @@ class LocalBridgeRunner:
                 reader.join(timeout=max(0.0, reader_deadline - time.monotonic()))
             streams_closed = all(not reader.is_alive() for reader in readers)
             escaped_alive = {pid for pid in escaped_seen if pid_may_be_alive(pid)}
+            lifetime_closed = _inherited_lifetime_closed(lifetime_read_fd)
             termination_confirmed = (
                 direct_confirmed
                 and group_confirmed
                 and not escaped_alive
                 and streams_closed
+                and lifetime_closed
             )
             if not termination_confirmed:
                 execution.transition(ExecutionState.TERMINATION_UNCONFIRMED)
@@ -255,8 +329,14 @@ class LocalBridgeRunner:
                 os.close(slave_fd)
             if master_fd is not None:
                 os.close(master_fd)
+            if lifetime_write_fd is not None:
+                os.close(lifetime_write_fd)
+            if lifetime_read_fd is not None:
+                os.close(lifetime_read_fd)
             for reader in readers:
                 reader.join(timeout=_READER_JOIN_S)
+            if waiter is not None:
+                waiter.join(timeout=_WAITER_JOIN_S)
             if acquired:
                 lease.release(cwd, execution.execution_id, execution.attempt_id)
 

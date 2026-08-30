@@ -2,17 +2,22 @@
 
 from .contracts import (
     AllAttemptsFailed,
+    AttemptAuthorizerContract,
     ComboAttempt,
     ComboDeadlineExceeded,
     ComboError,
     ComboRequest,
     ComboRouterContract,
     FallbackBlocked,
+    RoutingAbstained,
+    RoutingAuthorityContract,
+    RoutingContext,
 )
 from .orchestration import ComboRouter, run_combo
 
 __all__ = [
     "AllAttemptsFailed",
+    "AttemptAuthorizerContract",
     "ComboAttempt",
     "ComboDeadlineExceeded",
     "ComboError",
@@ -20,5 +25,8 @@ __all__ = [
     "ComboRouter",
     "ComboRouterContract",
     "FallbackBlocked",
+    "RoutingAbstained",
+    "RoutingAuthorityContract",
+    "RoutingContext",
     "run_combo",
 ]

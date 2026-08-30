@@ -10,6 +10,7 @@ from aegis.contracts import FailureCondition, RiskContext
 from aegis.decision import evaluate
 
 from athena.bridge import BridgeRunnerContract, RunRequest, RunResult
+from athena.capsule import CapsuleDenied
 from athena.execution import (
     TERMINAL_STATES,
     Clock,
@@ -27,6 +28,7 @@ from athena.lease import (
 
 from .contracts import (
     AllAttemptsFailed,
+    AttemptAuthorizerContract,
     ComboAttempt,
     ComboDeadlineExceeded,
     ComboRequest,
@@ -140,10 +142,12 @@ class ComboRouter:
         lease: DirectoryLeaseContract,
         *,
         clock: Clock | None = None,
+        attempt_authorizer: AttemptAuthorizerContract | None = None,
     ) -> None:
         self._bridge = bridge
         self._lease = lease
         self._clock = clock or SystemClock()
+        self._attempt_authorizer = attempt_authorizer
 
     def run(
         self,
@@ -217,12 +221,28 @@ class ComboRouter:
                     execution_id,
                     current_attempt_id,
                 )
-                last_result = self._bridge.run(
-                    attempt.request,
-                    execution,
-                    held_lease,
-                    control=control,
-                )
+                try:
+                    request = attempt.request
+                    if self._attempt_authorizer is not None:
+                        prepare = self._attempt_authorizer.prepare_attempt
+                        request = prepare(
+                            request,
+                            execution,
+                            fallback_declared=index + 1 < len(combo.attempts),
+                            tests=combo.tests,
+                        )
+                    last_result = self._bridge.run(
+                        request,
+                        execution,
+                        held_lease,
+                        control=control,
+                    )
+                except CapsuleDenied as exc:
+                    release_confirmed = True
+                    raise AllAttemptsFailed(
+                        exc.reason_code,
+                        last_result=last_result,
+                    ) from exc
                 release_confirmed = _confirmed_terminal(last_result)
 
                 if last_result.state is ExecutionState.COMPLETED:

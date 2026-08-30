@@ -115,3 +115,54 @@ source_modules = [
     "athena.verifier",
 ]
 forbidden_modules = ["aegis"]
+
+[[tool.importlinter.contracts]]
+name = "clio does not import operational core modules"
+type = "forbidden"
+source_modules = ["athena.clio"]
+forbidden_modules = [
+    "athena.mcp_server",
+    "athena.router",
+    "athena.bridge",
+    "athena.registry",
+    "athena.lease",
+    "athena.execution",
+    "athena.flow",
+    "athena.tasks",
+    "athena.observation",
+    "aegis",
+]
+
+[[tool.importlinter.contracts]]
+name = "harmonia does not import operational core modules"
+type = "forbidden"
+source_modules = ["athena.harmonia"]
+forbidden_modules = [
+    "athena.mcp_server",
+    "athena.router",
+    "athena.bridge",
+    "athena.registry",
+    "athena.execution",
+    "athena.flow",
+    "athena.tasks",
+    "athena.observation",
+    "aegis",
+]
+
+[[tool.importlinter.contracts]]
+name = "olimpo does not import operational core modules"
+type = "forbidden"
+source_modules = ["athena.olimpo"]
+forbidden_modules = [
+    "athena.mcp_server",
+    "athena.router",
+    "athena.bridge",
+    "athena.registry",
+    "athena.lease",
+    "athena.execution",
+    "athena.flow",
+    "athena.tasks",
+    "athena.clio",
+    "athena.observation",
+    "aegis",
+]

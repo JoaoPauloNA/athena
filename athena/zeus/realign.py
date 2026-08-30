@@ -232,7 +232,8 @@ class NikeRuntimeSelector:
 
     def resolve(self, request: TaskRequest, *,
                 aegis_allows: bool = True,
-                capability_map: dict[str, bool] | None = None) -> NikeDecision:
+                capability_map: dict[str, bool] | None = None,
+                direct_provider_id: str | None = None) -> NikeDecision:
         elig = self._zeus.eligibility(request)
         zeus_reasons = elig.reason_codes
 
@@ -254,7 +255,14 @@ class NikeRuntimeSelector:
         obs_by_pid = {e["provider_id"]: e for e in observed
                       if isinstance(e, dict) and e.get("provider_id")}
 
-        for pid in sorted(self._providers):
+        provider_ids = (
+            (direct_provider_id,)
+            if direct_provider_id is not None
+            else tuple(sorted(self._providers))
+        )
+        for pid in provider_ids:
+            if pid not in self._providers:
+                continue
             spec = self._providers[pid]
             ok, _reason = provider_eligible(
                 spec, obs_by_pid.get(pid),

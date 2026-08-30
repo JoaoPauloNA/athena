@@ -12,12 +12,24 @@ from .memory import (
     release,
     transfer,
 )
+from .resource import (
+    AccessMode,
+    BusyEstimate,
+    ResourceLeaseManager,
+    ResourceOwner,
+    ResourceRequest,
+)
 
 __all__ = [
+    "AccessMode",
+    "BusyEstimate",
     "DirectoryLeaseContract",
     "DirectoryLeaseManager",
     "LeaseAcquisitionTimeout",
     "LeaseOwnershipError",
+    "ResourceLeaseManager",
+    "ResourceOwner",
+    "ResourceRequest",
     "acquire",
     "canonicalize_workspace",
     "release",

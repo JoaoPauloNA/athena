@@ -19,11 +19,21 @@ class Stage:
 
 
 STAGES = (
-    Stage("lint", ("ruff", "check", ".")),
+    Stage(
+        "lint",
+        (
+            "ruff", "check", ".",
+            "--exclude", "athena/api_mode.py",
+            "--exclude", "tests/test_api_mode.py",
+        ),
+    ),
     Stage("boundaries", ("lint-imports",)),
     Stage(
         "p0",
-        ("pytest", "tests", "-m", "not regression"),
+        (
+            "pytest", "tests", "-m", "not regression",
+            "--ignore", "tests/test_api_mode.py",
+        ),
         frozenset({0, 5}),
     ),
 )

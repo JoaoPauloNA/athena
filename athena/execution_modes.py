@@ -14,6 +14,9 @@ from typing import Any
 
 from .bridge.contracts import RunRequest
 
+_MODEL_FLAG = "--model"
+_PROMPT_FLAG = "-p"
+
 # Flags "unattended" conhecidas por CLI. O modo declarado e auditável
 # substitui flags soltas: a configuração concede, o Aegis pode negar.
 _UNATTENDED_FLAGS = {
@@ -25,7 +28,8 @@ _UNATTENDED_FLAGS = {
 
 def resolve_execution_command(spec: dict[str, Any], prompt: str, *,
                               unattended: bool = False,
-                              cwd: str = "/tmp") -> RunRequest:
+                              cwd: str = "/tmp",
+                              model: str | None = None) -> RunRequest:
     """Construir RunRequest a partir da especificação do provider."""
     mode = spec.get("mode")
     if mode != "agent_cli":
@@ -35,13 +39,11 @@ def resolve_execution_command(spec: dict[str, Any], prompt: str, *,
         raise ValueError("agent_cli exige 'command'")
 
     args: list[str] = [argv0]
-    # linguagem do executor: prompt via flag -p/--prompt com fallback stdin?
-    # Decisão CFG-4: passar o prompt por argumento padrão da CLI alvo.
-    prompt_flag = spec.get("prompt_flag", "-p")
-    if prompt_flag:
-        args += [prompt_flag, prompt]
-    else:
-        args.append(prompt)
+    chosen_model = model or spec.get("default_model")
+    if chosen_model:
+        args += [_MODEL_FLAG, str(chosen_model)]
+
+    args += [_PROMPT_FLAG, prompt]
 
     if unattended:
         for flag in _UNATTENDED_FLAGS.get(argv0.split("/")[-1],

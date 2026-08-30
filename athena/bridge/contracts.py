@@ -26,6 +26,8 @@ class RunRequest:
     use_pty: bool = False
     lease_timeout_s: float | None = None
     termination_grace_s: float = 0.5
+    inherit_environment: bool = True
+    authorization: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +48,11 @@ class RunResult:
     def output(self) -> str:
         """Retornar a saída observável do processo."""
         return self.stdout + self.stderr
+
+    @property
+    def timed_out(self) -> bool:
+        """Indicar se a execução terminou por deadline do lifecycle."""
+        return self.state is ExecutionState.TIMED_OUT
 
 
 @runtime_checkable

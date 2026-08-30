@@ -1,5 +1,35 @@
 # Harnesses comparativos
 
+## Caracterização de overhead do Athena
+
+`benchmark_orchestration.py` mede o mesmo comando inofensivo `true` por três
+caminhos: subprocesso direto, `LocalBridgeRunner` em processo e `run_combo`
+JSON-RPC em um único servidor stdio persistente. O startup do servidor fica fora
+das amostras. A saída é um único documento JSON versionado em stdout; amostras
+brutas, ambiente, prompts, credenciais, diretórios pessoais e tabelas de
+processos não são registrados.
+
+Execução de caracterização com os padrões limitados (30 amostras e 3
+aquecimentos por caminho):
+
+```sh
+.venv/bin/python harness/benchmark_orchestration.py
+```
+
+O guardrail atual é apenas um teto de regressão da caracterização: p95 do
+overhead bridge-sobre-direto em até 30 ms e p95 incremental MCP-sobre-bridge em
+até 5 ms. Ele não aprova nem substitui a meta futura proposta de 5 ms para o
+bridge. Falha retorna código não zero e lista o nome de cada métrica no JSON.
+
+```sh
+.venv/bin/python harness/benchmark_orchestration.py \
+  --samples 30 --warmups 3 --guardrail
+```
+
+Os limites podem ser ajustados com `--bridge-ceiling-ms` e
+`--mcp-incremental-ceiling-ms`, ambos finitos e restritos ao intervalo de 0 a
+1000 ms. Amostras aceitam 5 a 1000 e aquecimentos aceitam 1 a 100.
+
 Os comparativos permanentes entre o núcleo novo e o legado ficam fora do gate
 rápido. Para executá-los a partir da raiz do repositório:
 

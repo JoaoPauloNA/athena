@@ -1,4 +1,4 @@
-"""Contratos da camada fina de exposicao das tools MCP."""
+"""Contratos da camada fina de exposição das tools MCP."""
 
 from __future__ import annotations
 
@@ -7,9 +7,16 @@ from dataclasses import dataclass
 from typing import Any, Protocol, TypeAlias, runtime_checkable
 
 from athena.execution import ExecutionControl
+from athena.flow.contracts import FlowControllerContract
 from athena.profiles import ServiceProfile
 from athena.registry import ExecutionRegistryContract, RequestId
-from athena.router import ComboRequest, ComboRouterContract
+from athena.router import (
+    ComboRequest,
+    ComboRouterContract,
+    RoutingAuthorityContract,
+    RoutingContext,
+)
+from athena.tasks import TaskStoreContract, TaskSubmission
 from athena.verifier import VerificationRequest, VerificationResult
 
 ToolPayload: TypeAlias = Mapping[str, Any]
@@ -36,7 +43,7 @@ class ArtifactSinkContract(Protocol):
 
 @runtime_checkable
 class ProfileResolverContract(Protocol):
-    """Resolver o perfil que sera entregue ao router."""
+    """Resolver o perfil que será entregue ao router."""
 
     def __call__(
         self,
@@ -46,13 +53,13 @@ class ProfileResolverContract(Protocol):
         task_type: object | None = None,
         working_directory: object | None = None,
     ) -> ServiceProfile:
-        """Retornar um perfil publico e conservador."""
+        """Retornar um perfil público e conservador."""
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class MCPServerDependencies:
-    """Dependencias explicitas permitidas para a superficie MCP."""
+    """Dependências explícitas permitidas para a superfície MCP."""
 
     router: ComboRouterContract
     registry: ExecutionRegistryContract
@@ -60,8 +67,13 @@ class MCPServerDependencies:
     profile_resolver: ProfileResolverContract
     control_factory: ControlFactory
     shadow_emitter: object | None = None
+    clio_emitter: object | None = None
     artifact_finalizer: ArtifactFinalizer | None = None
     artifact_sink: ArtifactSinkContract | None = None
+    task_store: TaskStoreContract | None = None
+    routing_authority: RoutingAuthorityContract | None = None
+    # FLOW-1: typed as FlowControllerContract — never plain object
+    flow_controller: FlowControllerContract | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +88,7 @@ class PreparedExecution:
 
 @runtime_checkable
 class MCPServerContract(Protocol):
-    """Tools invocaveis diretamente, sem transporte de rede."""
+    """Tools invocáveis diretamente, sem transporte de rede."""
 
     def run_combo(
         self,
@@ -85,8 +97,10 @@ class MCPServerContract(Protocol):
         request_id: RequestId,
         verification: VerificationRequest | None = None,
         prepared: PreparedExecution | None = None,
+        routing_context: RoutingContext | None = None,
+        task_handle: str | None = None,
     ) -> ToolPayload:
-        """Delegar um combo e opcionalmente sua verificacao."""
+        """Delegar um combo e opcionalmente sua verificação."""
         ...
 
     def ask_provider(
@@ -99,8 +113,10 @@ class MCPServerContract(Protocol):
         working_directory: object | None = None,
         verification: VerificationRequest | None = None,
         prepared: PreparedExecution | None = None,
+        routing_context: RoutingContext | None = None,
+        task_handle: str | None = None,
     ) -> ToolPayload:
-        """Delegar ao router uma requisicao preparada para um provider."""
+        """Delegar ao router uma requisição preparada para um provider."""
         ...
 
     def get_execution(
@@ -109,11 +125,11 @@ class MCPServerContract(Protocol):
         *,
         request_id: RequestId | None = None,
     ) -> ToolPayload:
-        """Consultar uma execucao sanitizada."""
+        """Consultar uma execução sanitizada."""
         ...
 
     def list_executions(self, *, limit: int | None = None) -> ToolPayload:
-        """Listar execucoes sanitizadas."""
+        """Listar execuções sanitizadas."""
         ...
 
     def cancel_execution(
@@ -138,4 +154,12 @@ class MCPServerContract(Protocol):
 
     def abandon_nonterminal(self, *, reason: str = "client_abandoned") -> int:
         """Sinalizar abandono das execuções ainda ativas."""
+        ...
+
+    def submit_task(self, submission: TaskSubmission) -> ToolPayload:
+        """Persistir uma tarefa durável de forma idempotente. Não a executa."""
+        ...
+
+    def get_task(self, task_handle: str) -> ToolPayload:
+        """Consultar a projeção sanitizada de uma tarefa durável."""
         ...

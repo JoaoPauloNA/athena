@@ -15,8 +15,10 @@ from .server import (
     ask_provider,
     cancel_execution,
     get_execution,
+    get_task,
     list_executions,
     run_combo,
+    submit_task,
 )
 
 __all__ = [
@@ -32,6 +34,8 @@ __all__ = [
     "ask_provider",
     "cancel_execution",
     "get_execution",
+    "get_task",
     "list_executions",
     "run_combo",
+    "submit_task",
 ]
