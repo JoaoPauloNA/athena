@@ -1,5 +1,21 @@
 # Estado atual — Athena-MCP
 
+## SNAPSHOT ATUAL (2026-08-26)
+
+- HEAD = origin/main = **`5319763`** · worktree limpo
+- **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
+- **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
+- **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
+- Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
+- D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)
+- D2–D15: evidência de suíte focais/componentes/integração (não todas e2e)
+- Sem WIP ativo após esta fatia de documentação
+- Bloqueios externos: corpus CG-0 humano · login zchat/kimi · aceite externo v1
+- Arquivos protegidos hash-verificados (`db8885c0…`/`da123ab4…`)
+> **Histórico abaixo**: valores de HEAD/remotes anteriores a `5319763` são históricos.
+
+
+
 Fotografia verificada diretamente em 2026-08-29. Esta classificação descreve o checkout local, não o beta, deploys ou outros repositórios.
 
 ## Base Git

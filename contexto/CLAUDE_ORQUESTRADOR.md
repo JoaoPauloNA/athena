@@ -1,5 +1,21 @@
 # Contrato do gerente principal — Athena-MCP
 
+## SNAPSHOT ATUAL (2026-08-26)
+
+- HEAD = origin/main = **`5319763`** · worktree limpo
+- **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
+- **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
+- **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
+- Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
+- D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)
+- D2–D15: evidência de suíte focais/componentes/integração (não todas e2e)
+- Sem WIP ativo após esta fatia de documentação
+- Bloqueios externos: corpus CG-0 humano · login zchat/kimi · aceite externo v1
+- Arquivos protegidos hash-verificados (`db8885c0…`/`da123ab4…`)
+> **Histórico abaixo**: valores de HEAD/remotes anteriores a `5319763` são históricos.
+
+
+
 ## Último gate fechado
 
 - `ARGOS-1 — Browser QA real e seguro`: **COMPLETED** em 2026-08-30.
@@ -28,8 +44,8 @@ Este é o handoff curto para Claude principal ou Codex principal. O gerente ativ
 - MULTI-0 foi aceita após revisão independente: `athena/harmonia/` entrega schemas fechados, DAG/plano determinístico, backpressure FIFO/tokens, reserva atômica multi-recurso, estratégia lease vs worktree e execução cancelável; P0 `PASS`; `45 passed` focados; suíte protegida-aware `636 passed, 3 deselected`; benchmark 30/3 com p95 de planejamento `0.025708 ms` e reserva `0.02575 ms`; hashes protegidos inalterados. Limite declarado: Harmonia não é sandbox de sistema operacional.
 - Em 2026-08-30 o CEO autorizou explicitamente finalizar Aletheia, Themis e Argos. As três fatias foram fechadas: Aletheia `97 passed`, Themis `54 passed`, Argos `28 passed`; P0 Athena final `PASS`.
 - Protegido: `athena/api_mode.py` e `tests/test_api_mode.py`, não rastreados, são trabalho experimental/do usuário. Não editar, adicionar, testar, integrar ou remover sem autorização específica.
-- Também estão fora da autorização: runtime, testes, dependências, schemas, contratos MCP, Git/remotos/branches, Vault, outros repositórios, beta e credenciais.
-- Não autorizados: commit, push, promoção do beta, release, deploy, trabalho com credenciais, ações destrutivas e infraestrutura paga.
+- **[HISTÓRICO — fatias anteriores]** Também estavam fora da autorização daquelas fatias: runtime, testes, dependências, schemas, contratos MCP, Git/remotos/branches, Vault, outros repositórios, beta e credenciais. O loop de fechamento 2026-08-26 operou sob autorização expressa do usuário para commits/pushes ordinários de main (ver `Athena-Operacao-Multi-Agente.md` no Vault).
+- **[HISTÓRICO — fatias anteriores]** Não autorizados naquelas fatias: commit, push, promoção do beta, release, deploy, trabalho com credenciais, ações destrutivas e infraestrutura paga. A promoção do beta e os pushes de `5319763` foram executados sob a autorização do loop de fechamento.
 - BASE-0 e PERF-0 permanecem concluídas com seus fatos e limites históricos preservados. PERF-1 não implementou INT-ALE-0 nem qualquer fatia posterior; a classificação terminal bloqueada de INT-ALE-0 apenas torna CFG-SEC-0 elegível, sem iniciá-la, e nenhuma outra proposta M-20 a M-30 recebeu aprovação implícita.
 
 Para estado detalhado, ler `ESTADO_ATUAL.md`; para ordem, `ROADMAP.md`; para história e decisões extensas, `gerencia_athena-mcp.md`.

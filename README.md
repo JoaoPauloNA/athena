@@ -11,15 +11,17 @@ Servidor MCP (stdio, JSON-RPC) para **execução governada de CLIs de agentes de
 3. **Ciclo de vida observável** — toda execução tem `execution_id`, estados explícitos (`completed`, `failed`, `cancelled`, `timed_out`…), consulta (`get_execution`, `list_executions`) e cancelamento idempotente (`cancel_execution`).
 4. **Falha sanitizada** — timeouts e falhas voltam como resultado da tool com `isError: true` e payload sanitizado (estado, exit code, stdout/stderr parciais, duração, deadline expirado) — nunca como erro de protocolo opaco.
 
-## Tools MCP (5)
+## Tools MCP (7)
 
 | Tool | Descrição |
 |---|---|
 | `run_combo` | Executa sequência de tentativas com fallback governado |
-| `ask_provider` | Executa uma solicitação preparada para um provider/CLI |
-| `get_execution` | Consulta uma execução sanitizada por `execution_id` ou `request_id` |
-| `list_executions` | Lista execuções recentes sanitizadas |
-| `cancel_execution` | Solicita cancelamento idempotente |
+| `ask_provider` | Executa um provider único com governança Aegis |
+| `get_execution` | Consulta estado sanitizado de uma execução |
+| `list_executions` | Lista execuções recentes |
+| `cancel_execution` | Solicita cancelamento cooperativo |
+| `submit_task` | Submete tarefa durável (TASK-0/FLOW-1) |
+| `get_task` | Consulta estado de tarefa durável |
 
 ## Instalação
 
@@ -54,7 +56,7 @@ Registro no cliente MCP (exemplo Claude Desktop):
 
 - **POSIX-only**: o bridge usa grupos de processo e PTY POSIX; encerramento em Windows não é garantido (`TERMINATION_UNCONFIRMED`).
 - **Single-user**: processo stdio local por usuário; sem rede, sem autenticação, sem multiusuário.
-- **Sem dashboard**: a interface é exclusivamente as tools MCP acima.
+- **Sem dashboard de produção**: as tools MCP são a interface operacional. O adaptador **Olimpo** (OLIMPO-0) existe como app local opt-in read-only em loopback para configuração/observação — não é dashboard completo de produto.
 - **Sem sandbox forte**: as CLIs executadas rodam com as permissões do seu usuário no workspace informado — use diretórios de trabalho dedicados.
 - **Fallback automático**: perfis `authenticated_external` e `unknown` nunca fazem fallback automático (política fail-closed do Aegis).
 - Aprovação humana inline (`REQUIRES_HUMAN_APPROVAL`) está reservada no contrato do Aegis e ainda não é emitida.
@@ -80,3 +82,30 @@ Fronteiras de import entre módulos são verificadas por máquina (`import-linte
 ## Licença
 
 Ver [LICENSE](LICENSE).
+
+
+## Ecossistema: repositórios independentes
+
+| Repositório | Papel |
+|---|---|
+| **Athena-MCP** (este) | Orquestrador/agregador — recebe projetos independentes via contratos públicos versionados |
+| Aegis (privado) | Gate independente de risco/permissão |
+| Aletheia | claimed-vs-verified (episódios que alimentam o Themis) |
+| Moiras | observação shadow |
+| Themis (privado) | reputação/scoring |
+| Argos (privado) | browser QA observacional |
+| athena.dev (privado) | produto/site |
+
+## Módulos internos (não são repositórios)
+
+Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo governado) · Evidence Gate (EG-1 motor + EG-3A sink opt-in) · Clio (logging 4 níveis) · Harmonia (paralelismo/write-sets) · Capsule (ambiente mínimo com seal) · Iris (preflight) · Olimpo (adaptador local read-only) · Flow/Tasks (durabilidade) · Lease · config loader · bridge · SSH transport (dormente, D-SSH).
+
+## Testes (comando exato e contagem fresh)
+
+```bash
+.venv/bin/python harness/p0_gate.py           # lint/boundaries/p0 — PASS
+.venv/bin/python -m pytest tests -m "not regression" -q --ignore=tests/test_api_mode.py
+# 715 passed, 3 deselected (2026-08-26, HEAD 5319763)
+```
+
+`tests/test_api_mode.py` e `athena/api_mode.py` são arquivos protegidos do usuário (hash-verificados; não executados nesta suíte).
