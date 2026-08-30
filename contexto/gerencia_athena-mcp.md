@@ -318,3 +318,12 @@
 - Correção adicional de contrato: `submit_task` agora anuncia schema explícito e fechado, incluindo o objeto `task`; `get_task` anuncia schema superior fechado. Os `maxLength` anunciados são hints em caracteres e o runtime permanece autoritativo em bytes UTF-8; a regressão estrutural cobre ambos os schemas e as sete tools.
 - Revalidação: `git diff --check` e Ruff passaram; 72 testes focados, `harness/p0_gate.py` e a suíte não-regressão (`393 passed, 3 deselected`, com `tests/test_api_mode.py` excluído) passaram. Smoke JSON-RPC real em dois processos comprovou submit no processo A e get no processo B. Benchmark 30 amostras/3 warmups: p95 bridge `0.385166 ms`, MCP incremental `0.4995 ms`, ambos sob 5 ms.
 - Hashes protegidos de `athena/api_mode.py` e `tests/test_api_mode.py` confirmados inalterados. TASK-0 está `COMPLETED`; CAP-0 é a próxima elegível e não foi iniciada. Nenhum commit/push realizado.
+
+
+## Loop de fechamento 2026-08-26 (OX Alpha)
+
+- Worktree reconciliado em 3 commits publicados (`7e8ce8d`, `c72f926`, `851087f`); HEAD == origin/main
+- Wiring experimental EG-3A com `eg_reports_store` REJEITADO pela revisão e descartado (`git checkout 851087f --` nos 3 arquivos); arquitetura vigente: AtomicJsonFileSink + payload público intacto
+- D1 verificado de ponta a ponta: execução completed + stdout literal + sink atômico em ATHENA_EG3A_SINK_DIR + payload público sem evidence_gate
+- D2–D15 verificados (suítes focais + rejeições estáveis)
+- 7 tools MCP; proteções api_mode hash-verified
