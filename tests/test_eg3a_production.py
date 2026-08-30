@@ -167,7 +167,7 @@ def _tools_list(env):
     return next(m for m in lines if m.get("id") == 2)["result"]["tools"]
 
 
-def test_tools_list_jsonrpc_cinco_tools_e_schemas_deep_equal(tmp_path):
+def test_tools_list_jsonrpc_sete_tools_e_schemas_deep_equal(tmp_path):
     """Feature flag não muda tools/list nem qualquer schema existente."""
     base_env = {
         "PATH": os.environ.get("PATH", ""),
@@ -181,21 +181,39 @@ def test_tools_list_jsonrpc_cinco_tools_e_schemas_deep_equal(tmp_path):
     })
     assert enabled_tools == disabled_tools
     assert sorted(t["name"] for t in disabled_tools) == [
-        "ask_provider", "cancel_execution", "get_execution",
-        "list_executions", "run_combo"]
+        "ask_provider", "cancel_execution", "get_execution", "get_task",
+        "list_executions", "run_combo", "submit_task"]
 
 
 def test_real_smoke_jsonrpc_eg3a_literal_marker(tmp_path):
     """Smoke real: marcador público intacto e relatório somente no sink."""
+    from route0_support import routing_arguments, write_route_config
+
+    cfg_dir = write_route_config(tmp_path / "config", providers=("echo",))
     sink_dir = tmp_path / "eg3a-sink"
-    env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""),
-           "ATHENA_EG3A": "1", "ATHENA_EG3A_SINK_DIR": str(sink_dir)}
-    combo = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-                        "params": {"name": "run_combo", "arguments": {
-                            "attempts": [{"provider": "echo",
-                                          "command": ["echo", "EG3A_MARKER_OK"],
-                                          "cwd": str(tmp_path)}],
-                            "overall_timeout_s": 15}}})
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": os.environ.get("HOME", ""),
+        "ATHENA_CONFIG_DIR": str(cfg_dir),
+        "ATHENA_EG3A": "1",
+        "ATHENA_EG3A_SINK_DIR": str(sink_dir),
+    }
+    combo = json.dumps({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "run_combo",
+            "arguments": routing_arguments(
+                attempts=[{
+                    "provider": "echo",
+                    "command": ["echo", "EG3A_MARKER_OK"],
+                    "cwd": str(tmp_path),
+                }],
+                overall_timeout_s=15,
+            ),
+        },
+    })
     # stdin aberto até a resposta: Popen + write + aguardar + close
     proc = subprocess.Popen(
         [sys.executable, "-m", "athena.mcp_runtime"],

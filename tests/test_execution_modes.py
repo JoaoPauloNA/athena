@@ -59,3 +59,25 @@ def test_runrequest_compativel_com_bridge():
     rr = resolve_execution_command(_spec(), "tarefa")
     names = {f.name for f in dfields(type(rr))}
     assert {"command", "cwd"} <= names  # campos exigidos pelo bridge.run
+
+
+def test_model_explicito_chega_como_argv_separado():
+    rr = resolve_execution_command(_spec(), "tarefa", model="haiku-4")
+    assert rr.command == ("claude", "--model", "haiku-4", "-p", "tarefa")
+
+
+def test_model_default_da_config_quando_nao_solicitado():
+    rr = resolve_execution_command(
+        _spec(default_model="sonnet-4"),
+        "tarefa",
+    )
+    assert rr.command == ("claude", "--model", "sonnet-4", "-p", "tarefa")
+
+
+def test_model_solicitado_substitui_default_declarado():
+    rr = resolve_execution_command(
+        _spec(default_model="sonnet-4"),
+        "tarefa",
+        model="haiku-4",
+    )
+    assert rr.command == ("claude", "--model", "haiku-4", "-p", "tarefa")

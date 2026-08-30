@@ -310,4 +310,4 @@ def test_router_imports_only_its_four_allowed_athena_packages() -> None:
         name.split(".")[1]
         for name in imported_core_packages
         if name.startswith("athena.")
-    } <= {"bridge", "execution", "lease", "profiles"}
+    } <= {"bridge", "capsule", "execution", "lease", "profiles"}

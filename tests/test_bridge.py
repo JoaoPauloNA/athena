@@ -5,7 +5,9 @@ from __future__ import annotations
 import ast
 import json
 import os
+import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -82,6 +84,55 @@ def test_nonzero_exit_reaches_failed_terminal_state(tmp_path: Path) -> None:
     assert result.exit_code == 7
 
 
+@pytest.mark.skipif(os.name != "posix", reason="process inspection requires POSIX")
+def test_fast_success_does_not_inspect_process_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inspections = 0
+
+    def record_inspection(
+        root_pid: int, owned_group: int, previously_seen: set[int]
+    ) -> tuple[set[int], set[int]]:
+        nonlocal inspections
+        inspections += 1
+        return previously_seen, set()
+
+    monkeypatch.setattr("athena.bridge.runner.observe_descendants", record_inspection)
+
+    result = LocalBridgeRunner().run(
+        RunRequest(_python("pass"), tmp_path),
+        _record(),
+        DirectoryLeaseManager(),
+    )
+
+    assert result.state is ExecutionState.COMPLETED
+    assert inspections == 0
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process inspection requires POSIX")
+def test_descendant_inspection_uses_delayed_bounded_cadence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inspections: list[float] = []
+
+    def record_inspection(
+        root_pid: int, owned_group: int, previously_seen: set[int]
+    ) -> tuple[set[int], set[int]]:
+        inspections.append(time.monotonic())
+        return previously_seen, set()
+
+    monkeypatch.setattr("athena.bridge.runner.observe_descendants", record_inspection)
+
+    result = LocalBridgeRunner().run(
+        RunRequest(_python("import time; time.sleep(0.35)"), tmp_path),
+        _record(),
+        DirectoryLeaseManager(),
+    )
+
+    assert result.state is ExecutionState.COMPLETED
+    assert len(inspections) == 1
+
+
 def test_idle_deadline_expires_independently_during_silence(tmp_path: Path) -> None:
     execution = _record(
         deadlines=ExecutionDeadlines(absolute_timeout_s=2.0, idle_timeout_s=0.12)
@@ -118,6 +169,76 @@ def test_absolute_deadline_expires_despite_idle_progress(tmp_path: Path) -> None
     assert result.state is ExecutionState.TIMED_OUT
     assert result.expired_deadline is DeadlineKind.ABSOLUTE
     assert result.stdout.count("progress") >= 3
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_cancellation_preserves_partial_output_and_reaps_process_tree(
+    tmp_path: Path,
+) -> None:
+    class TestControl:
+        def __init__(self) -> None:
+            self._event = threading.Event()
+            self.cancel_reason: str | None = None
+
+        @property
+        def cancellation_requested(self) -> bool:
+            return self._event.is_set()
+
+        def request_cancel(self, reason: str | None = None) -> bool:
+            self.cancel_reason = reason
+            self._event.set()
+            return True
+
+    child_pid_file = tmp_path / "child.pid"
+    grandchild_pid_file = tmp_path / "grandchild.pid"
+    script = (
+        "import os, sys, time\n"
+        "child = os.fork()\n"
+        "if child == 0:\n"
+        " grandchild = os.fork()\n"
+        " if grandchild == 0:\n"
+        "  open(sys.argv[2], 'w').write(str(os.getpid()))\n"
+        "  time.sleep(10)\n"
+        "  os._exit(0)\n"
+        " open(sys.argv[1], 'w').write(str(os.getpid()))\n"
+        " time.sleep(10)\n"
+        " os._exit(0)\n"
+        "print('partial', flush=True)\n"
+        "while not (os.path.exists(sys.argv[1]) and os.path.exists(sys.argv[2])):\n"
+        " time.sleep(0.01)\n"
+        "time.sleep(10)\n"
+    )
+    control = TestControl()
+
+    def cancel_when_tree_is_ready() -> None:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if child_pid_file.exists() and grandchild_pid_file.exists():
+                control.request_cancel("test cancellation")
+                return
+            time.sleep(0.02)
+
+    canceller = threading.Thread(target=cancel_when_tree_is_ready)
+    canceller.start()
+    result = LocalBridgeRunner().run(
+        RunRequest(
+            _python(script, str(child_pid_file), str(grandchild_pid_file)),
+            tmp_path,
+        ),
+        _record(),
+        DirectoryLeaseManager(),
+        control=control,
+    )
+    canceller.join(timeout=2.0)
+
+    assert not canceller.is_alive()
+    assert result.state is ExecutionState.CANCELLED
+    assert result.stdout == "partial\n"
+    assert result.error == "test cancellation"
+    for pid_file in (child_pid_file, grandchild_pid_file):
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
 
 
 def test_pwd_matches_real_subprocess_cwd_even_if_caller_overrides_it(
@@ -223,6 +344,54 @@ def test_live_descendant_escaped_from_group_blocks_positive_termination(
         except ProcessLookupError:
             break
         time.sleep(0.02)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_rapid_escaped_descendant_closing_output_fails_closed(
+    tmp_path: Path,
+) -> None:
+    child_pid_file = tmp_path / "rapid-escaped.pid"
+    script = (
+        "import os, sys, time\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        " os.setsid()\n"
+        " os.close(1)\n"
+        " os.close(2)\n"
+        " open(sys.argv[1], 'w').write(str(os.getpid()))\n"
+        " time.sleep(5)\n"
+        " os._exit(0)\n"
+        "os._exit(0)\n"
+    )
+
+    result = LocalBridgeRunner().run(
+        RunRequest(_python(script, str(child_pid_file)), tmp_path),
+        _record(),
+        DirectoryLeaseManager(),
+    )
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and not child_pid_file.exists():
+        time.sleep(0.01)
+    assert child_pid_file.exists()
+    escaped_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    try:
+        assert result.state is ExecutionState.TERMINATION_UNCONFIRMED
+        os.kill(escaped_pid, 0)
+    finally:
+        # The sentinel covers descendants preserving inherited internal FDs.
+        # Deliberately closing every unknown inherited FD is outside this test.
+        try:
+            os.kill(escaped_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        cleanup_deadline = time.monotonic() + 2.0
+        while time.monotonic() < cleanup_deadline:
+            try:
+                os.kill(escaped_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.02)
 
 
 def test_bridge_imports_only_execution_and_lease_from_athena() -> None:

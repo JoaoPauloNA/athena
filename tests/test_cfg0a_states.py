@@ -39,14 +39,17 @@ def _write_parts(cd: Path, providers=None, functions=None):
     (cd / "providers.json").write_text(json.dumps(providers or {
         "ollama": _spec()}))
     (cd / "functions.json").write_text(json.dumps(functions or {
-        "condensar-contexto": {"specialist": "context-condenser"}}))
+        "condensar-contexto": {
+            "specialist": "context-condenser", "version": "v1"}}))
+    _persona_bundle(cd)
     write_snapshot(cd, build_manifest(cd))
 
 
 def _persona_bundle(cd: Path):
     pb = cd / "personas" / "context-condenser" / "v1"
     pb.mkdir(parents=True, exist_ok=True)
-    (pb / "bundle.json").write_text('{"specialist_id":"context-condenser","version":1}')
+    (pb / "bundle.json").write_text(
+        '{"specialist_id":"context-condenser","version":"v1"}')
 
 
 # --------------------------------------------------- estados administrativos

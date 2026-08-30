@@ -1,19 +1,140 @@
 # Gerência Técnica — Athena-MCP
 
+## Checkpoint CAP-0 — COMPLETED (2026-08-28)
+
+- Contrato criado em `contexto/CAP-0-CONTRATO.md` antes do código.
+- Entregues Cápsula, Selo Aegis, Iris local e ambiente mínimo no caminho MCP real, sem mudar as sete tools.
+- Após correção de fechamento de tipos e validação gerencial independente: Aegis `195 passed`; Athena focado `109 passed`; suíte não-regressão `457 passed, 3 deselected`; Ruff, diff-check e oito contratos de importação passaram; benchmark 30/3 teve p95 bridge `1.202625 ms` e MCP incremental `1.862125 ms`, ambos sob 5 ms. Naquele checkpoint, ROUTE-0 tornou-se a próxima elegível; seu fechamento posterior está registrado abaixo.
+
+## Checkpoint ROUTE-0 — COMPLETED (2026-08-29)
+
+- Contrato criado em `contexto/ROUTE-0-CONTRATO.md` antes do código.
+- Decisão M-19 fechada: Zeus/Nike são determinísticos no runtime; nenhuma LLM participa do caminho quente.
+- `run_combo` é autônomo com receitas advisory; `ask_provider` é a superfície direta limitada. Configuração/registro ausentes, inválidos ou adulterados abstêm antes do runner.
+- Aceitação independente final: diff-check/Ruff/P0 `PASS`; testes focados finais `159 passed`; suíte integral `475 passed, 3 deselected`; caminho JSON-RPC real e casos adversariais `PASS`; sete tools preservadas; benchmark ROUTE 30/3 p95 `0.525458 ms` sob 5 ms; hashes protegidos inalterados. Nenhum commit, push ou beta.
+- FLOW-1 é a próxima fatia elegível e permanece não iniciada até contrato próprio.
+
+## Checkpoint FLOW-1 — COMPLETED (2026-08-29)
+
+- Contrato criado em `contexto/FLOW-1-CONTRATO.md` antes do código.
+- Escopo: ligar `submit_task` a uma execução opcionalmente identificada por `task_handle`, atravessar ROUTE-0/CAP-0, verifier, Evidence Gate e Chronos, e persistir projeção terminal sanitizada consultável por `get_task`.
+- Sete tools permanecem; sem retry automático, multiagente, Clio/Olimpo, LLM ou recuperação de crash em `running`. Aletheia, Themis, Argos e os dois arquivos protegidos permanecem fora do escopo.
+- Aceitação independente: E2E real `submit_task -> run_combo -> get_task` em três processos; focados `178 passed`; Ruff/diff-check `PASS`; suíte protegida-aware `527 passed, 3 deselected`; sete tools preservadas; benchmark 30/3 com p95 bridge `1.031333 ms` e MCP incremental `1.322376 ms`, guardrail `PASS`, 33 execuções terminais e cleanup não forçado; hashes protegidos inalterados.
+- CLIO-0 é a próxima fatia elegível e permanece não iniciada até contrato próprio. Nenhum commit, push ou beta foi realizado.
+
+## Checkpoint CLIO-0 — COMPLETED (2026-08-29)
+
+- Contrato criado em `contexto/CLIO-0-CONTRATO.md` antes do código.
+- Escopo: quatro níveis, evento fechado e sanitizado, produtor não bloqueante,
+  fila limitada, writer local em lotes, retenção e benchmark p95 <= 1 ms.
+- `complete` sem protetor aprovado falha fechado; `none` não cria evento nem
+  storage comum. Sete tools e payloads MCP permanecem.
+- Aceitação gerencial após três correções: 64 testes Clio; 140 focados Clio+FLOW/MCP; Ruff/diff-check/nove fronteiras/P0 `PASS`; suíte `591 passed, 3 deselected`; sete tools; smoke JSON-RPC technical/none; benchmark 30/3 com enqueue p95 `0.004 ms` e none p95 `0.000208 ms`; hashes protegidos inalterados.
+- MULTI-0 é a próxima elegível e permanece não iniciada até contrato próprio. Nenhum commit, push ou beta.
+
+## Checkpoint MULTI-0 — COMPLETED (2026-08-29)
+
+- Contrato criado em `contexto/MULTI-0-CONTRATO.md` antes do código.
+- Escopo: Harmonia determinística, DAG de subtarefas, backpressure, tokens de
+  recursos, leases granulares atômicos/FIFO com heartbeat/TTL e estratégia
+  híbrida de worktree apenas em repositório sintético temporário.
+- Sete tools/schemas MCP permanecem; Olimpo/MCP-2026 não foram iniciados.
+- Aceitação gerencial independente: diff-check/Ruff/P0 `PASS`; `45 passed` focados; suíte protegida-aware `636 passed, 3 deselected`; benchmark Harmonia 30/3 com p95 de planejamento `0.025708 ms` e reserva `0.02575 ms`; hashes protegidos inalterados. A primeira passagem global mostrou interferência transitória; os casos passaram isoladamente e a repetição integral fechou verde.
+- Limite explícito: o núcleo coordena, autoriza e verifica write-set, mas não substitui sandbox de sistema operacional. `OLIMPO-0` é a próxima elegível e permanece não iniciada até contrato próprio. Nenhum commit, push ou beta.
+
+## Checkpoint OLIMPO-0 — COMPLETED (2026-08-29)
+
+- Contrato criado em `contexto/OLIMPO-0-CONTRATO.md` antes do código.
+- Sequência WIP=1: O-0 adapter HTTP local/schemas; O-1 frontend isolado; O-2 E2E, visual e desempenho.
+- M-20 a M-30, instalação de modelos/CLIs/proxies, autoridade operacional, rede externa e nova tool MCP permanecem fora do escopo.
+- O-0 aceito após correção de limites HTTP, headers duplicados, query fechada e boundary de exceções: Ruff/diff-check `PASS`, `24 passed`, hashes protegidos inalterados. Ressalva para O-2: métodos HTTP não suportados do handler real devem responder JSON sanitizado, não HTML padrão. O-1 é o único WIP.
+- Fechamento: O-2 eliminou HTML de erro, corrigiu CSP com nonce, CSRF, symlinks, origens e acoplamento SQLite privado. Evidência: `40 passed` backend/HTTP; frontend `16 passed`, typecheck/build; P0 `PASS`; suíte protegida-aware `676 passed, 3 deselected`; benchmark 30/3 p95 `0.506084 ms`; navegador real desktop e 390x844 sem overlay, console errors ou overflow global; hashes protegidos inalterados.
+- Limites: Olimpo é opt-in/loopback, não sandbox nem autoridade operacional; M-20 a M-30 permanecem pendentes. MCP-2026 era a próxima elegível e foi aberta posteriormente. Nenhum commit, push ou beta.
+
+## Checkpoint MCP-2026 — COMPLETED (2026-08-29)
+
+- Contrato criado em `contexto/MCP-2026-CONTRATO.md` antes do código.
+- Escopo: adapter dual-era stdio para `2026-07-28` com prevalidação antes de reserva, `server/discover` gated, validação `_meta` JSON genérica limitada, envelopes modernos completos, cancelamento in-flight-only, identidade `0.2.0` e legado `initialize`/`2024-11-05` preservado.
+- Sete tools/schemas inalterados; sem `structuredContent`/`outputSchema`; sem HTTP/SSE/OAuth/subscriptions/elicitation/sampling/Tasks.
+- Histórico NO-GO: primeira tentativa (`10 passed`, suíte `686 passed`, p95 `1.067 ms`) falhou revisão por reserva antes de erro de versão; segundo NO-GO por envelope/`clientInfo`/race/linha limitada.
+- Aceitação final após quarto passe e revisão independente: diff-check/Ruff/P0 `PASS`; focados MCP `44 passed`; probes stdio reais `PASS`; suíte protegida-aware `710 passed, 3 deselected`; benchmark 30/3 p95 bridge `0.475251 ms` e MCP incremental `0.961834 ms`, guardrail `PASS`, cleanup não forçado; hashes protegidos inalterados e nenhum processo órfão. Nenhum commit, push ou beta.
+- A fila finish-to-start BASE-0..MCP-2026 está esgotada; novas fatias exigem contrato próprio e decisão do CEO para M-20 a M-30.
+
 ## Identidade do produto
 - Objetivo: núcleo de execução governada do ecossistema Athena. Despacha tarefas para CLIs de agentes com máquina de estados, deadlines, fallback controlado e verificação determinística mais advisory do resultado.
+
+## Autorização CEO — Aletheia, Themis e Argos (2026-08-30)
+
+- O CEO revogou explicitamente a proteção anterior e autorizou finalizar os três projetos.
+- WIP=1 permanece: `INT-ALE-0` foi reaberta primeiro sob `INT-ALE-0-CONTRATO.md`; Themis e Argos não podem ser editados simultaneamente.
+
+### Fechamento da autorização (2026-08-30)
+
+- `INT-ALE-0` concluída: adapter estruturado, modelo/timeout reais, configuração fail-closed; Aletheia `97 passed` e integração `24 passed`.
+- `THEMIS-1` concluída no repositório separado: score v0.2 com eixos distintos, incerteza, eventos append-only e contrato Nike; `54 passed`.
+- `ARGOS-1` concluída como projeto separado: Chromium observacional, interceptação de escopo, evidência PNG e limites de prazo/recursos; `28 passed`.
+- Gate final do Athena-MCP: lint, boundaries e P0 `PASS`; hashes protegidos inalterados. Nenhum commit, push, promoção de beta, release ou deploy foi realizado.
+- WIP=1 está vazio. Integração Themis/Argos na surface MCP, extensão distribuída e análise multimodal não foram aprovadas implicitamente.
+- A autorização permite implementação e testes, mas não autoriza commit, push, beta, release, deploy, credenciais ou ações destrutivas.
 - Escopo atual: dez pacotes modulares com fronteiras de importação verificadas por máquina: `execution/`, `registry/`, `lease/`, `profiles/`, `transport/`, `bridge/`, `router/`, `verifier/`, `mcp_server/` e `zeus/`.
 - **Zeus** (2026-08-24, `9482791`): módulo de recomendação de especialista (agente/persona/modelo). Determinístico por (entrada + versão do registro); abstenção fail-closed com reason codes; Themis só desempata com evidência suficiente; **nunca executa** — Aegis autoriza, Athena orquestra, Moiras observa. Gate adversarial: 19 testes em `tests/test_zeus.py`.
 - Aegis é a fonte da classificação de perfil de serviço e da política de fallback. O repositório privado é `JoaoPauloNA/aegis`; a distribuição é `athena-aegis`; o pacote de importação Python continua `aegis`. O commit da renomeação no Aegis é `4e3cc20`.
 - Fora de escopo confirmado: `skip_permissions` não integra o núcleo novo. `RiskOutcome.REQUIRES_HUMAN_APPROVAL` permanece reservado no contrato do Aegis e não é emitido; não existe mecanismo de pausa/aprovação humana implementado.
 
 ## Estado comprovado
-- Publicação remota concluída em 2026-08-22: `origin/main` e `main` local estão em `9ab50eb`, incluindo Fix A e Fix C. O `Athena-beta` foi corretamente repromovido e permanece ativo localmente.
-- Última atualização: 2026-08-26.
+- Estado Git diretamente verificado em 2026-08-28: `main`/HEAD em `d69ba39a242fd5348a585dd94e83e83b5d1f489a`, `origin/main` em `fc58ed9926e2f7bf37601691f40ded5267ff6ac9`; a branch local está seis commits à frente.
+- Antes das mudanças documentais de BASE-0, o worktree continha somente dois arquivos não rastreados, `athena/api_mode.py` e `tests/test_api_mode.py`. Na entrega de BASE-0, somaram-se os quatro novos arquivos de contexto autorizados. Esse registro histórico permanece válido; posteriormente, os bytes validados de PERF-0 acrescentaram `harness/benchmark_orchestration.py`, `tests/test_benchmark_orchestration.py` e a alteração de `harness/README.md`. Os dois arquivos experimentais/do usuário permanecem preservados, não são implementação aceita e não foram alterados, adicionados ou testados por BASE-0.
+- A versão diretamente verificada em `pyproject.toml` é `0.2.0`. Após TASK-0, a superfície MCP possui sete tools: as cinco originais e `submit_task`/`get_task`.
+- Registro histórico: em 2026-08-22, `origin/main` e `main` local estavam em `9ab50eb`, incluindo Fix A e Fix C, e o `Athena-beta` foi reportado como repromovido. Esse registro não descreve o HEAD atual nem comprova o estado atual do beta.
+- Última atualização: 2026-08-28.
 - A CI foi validada em `d3e191a028f0de751994af2bf4c28566f7ff7837` e o handoff documental da fatia anterior foi publicado em `62fb03b` em `origin/main`. O remoto monolítico antigo foi reconciliado por force-push autorizado.
 - Preservar as branches locais antigas `athena-release-20260814` e `fix/p0-audit-20260815`; não as excluir sem decisão explícita.
 - A fatia de CI está **FECHADA**. O GitHub Actions run `32435500126` passou em Ubuntu e macOS, com Python 3.11 e 3.12.
 - A P1 de transporte stdio/JSON-RPC foi publicada em `origin/main` nos commits `76e45ff` e `8336583`. A decisão da fatia seguinte (`transport/` sem consumidor) foi registrada em `4e13975`.
+
+## Checkpoint BASE-0 — contexto operacional (2026-08-28)
+
+- Criada a base mínima `contexto/INDEX.md`, `contexto/ESTADO_ATUAL.md`, `contexto/ROADMAP.md` e `contexto/CLAUDE_ORQUESTRADOR.md`; este arquivo permanece como handoff técnico extenso e histórico.
+- BASE-0 foi concluída após validação estrutural. A fila finish-to-start vigente é BASE-0, PERF-0, PERF-1, INT-ALE-0, CFG-SEC-0, TASK-0, CAP-0, ROUTE-0, FLOW-1, CLIO-0, MULTI-0, OLIMPO-0 e MCP-2026. Nenhuma fatia posterior foi iniciada por este checkpoint.
+- Conflito preservado: há código rastreado anterior relacionado a configuração e Zeus/Nike, enquanto a fila de 2026-08-28 ainda exige fatias próprias CFG-SEC-0 e ROUTE-0. A presença do código não satisfaz nem abre esses gates.
+- Registro histórico de BASE-0: M-20 a M-30 aguardavam decisão e M-19 não podia ser aprovada implicitamente. M-19 recebeu depois aceite explícito do CEO e foi fechada em ROUTE-0; M-20 a M-30 continuam pendentes.
+- Commit, push, promoção do beta, release, deploy, trabalho com credenciais, ações destrutivas e infraestrutura paga não foram autorizados nesta fatia.
+- Próxima fatia exata após a validação de BASE-0: `PERF-0 — benchmark e SLO`.
+
+## Checkpoint PERF-0 — benchmark e SLO (2026-08-28)
+
+- PERF-0 foi concluída após validação gerencial independente executada fora do sandbox do Codex2, restrito por socket, contra os bytes atuais.
+- Evidência exata: `git diff --check: PASS`; `Ruff on PERF-0 files: PASS`; `focused pytest: 20 passed`; `real smoke: 10 samples, 2 warmups, guardrail PASS`; `bridge-over-direct p95: 10.900625 ms (30 ms characterization ceiling)`; `incremental MCP-over-bridge p95: 0.853251 ms (5 ms ceiling)`; `MCP cleanup: exit 0, not forced, not alive; no remaining python -m athena process`; `harness/p0_gate.py: lint PASS, boundaries PASS, p0 PASS`; `full non-regression suite: 327 passed, 3 deselected`.
+- Os p95 e os tetos de 30 ms e 5 ms são caracterização desta máquina e guardrails de regressão. Eles não constituem nem aprovam o SLO futuro proposto de 5 ms para o bridge.
+- PERF-1 é a próxima fatia elegível na ordem finish-to-start e permanece `NÃO INICIADA`. WIP=1 continua vigente; o fechamento de PERF-0 não abre automaticamente PERF-1 nem qualquer linha posterior.
+- Este fechamento documental não altera decisões, propostas, fronteiras de proteção, história, arquivos do usuário ou fatos de BASE-0; também não autoriza commit, push, tag, release, beta, remotos, Vault ou outros repositórios.
+
+## Checkpoint PERF-1 — supervisor orientado a eventos (2026-08-28)
+
+- PERF-1 está `CONCLUÍDA` após validação gerencial independente fora do sandbox contra os bytes atuais. Evidência exata: `git diff --check: PASS`; Ruff dos Python alterados de PERF-1 `PASS`; testes focados do bridge `14 passed`; `harness/p0_gate.py` com lint, boundaries e p0 `PASS`; suíte integral `331 passed, 3 deselected`; benchmark real com `30 samples`, `3 warmups` e guardrail `PASS`; `bridge-over-direct p95: 0.320792 ms` sob teto de 5 ms; `incremental MCP-over-bridge p95: 0.5685 ms` sob teto de 5 ms; cleanup MCP com `exit 0`, `not forced`, `not alive` e `33 terminal runs`; nenhum filho de teste PERF-1 restante; nenhum novo processo `python -m athena` restante. Processos Athena-beta MCP long-running do desktop eram preexistentes e não foram tocados.
+- O bridge substituiu o ciclo de `poll()`/sleep e os snapshots repetidos de `ps` no caminho quente por espera de conclusão orientada a evento, sinais monotônicos limitados e inspeções de descendentes atrasadas, esparsas e forçadas em eventos relevantes de teardown. O caminho rápido validado não chama repetidamente a tabela de processos.
+- Um sentinel POSIX interno herdável cobre a corrida em que um descendente ordinário chama `setsid()`, fecha stdout/stderr e sobrevive à saída rápida do pai: quando descendentes ordinários preservam o FD interno herdado, a execução fecha conservadoramente como `termination_unconfirmed`. A fronteira é exata e limitada: não se afirma detectar processo que, deliberadamente ou por política própria, feche todos os FDs herdados desconhecidos.
+- Timeout e cancelamento preservam saída/estado parcial e encerram a árvore possuída nos casos validados; PTY, pipes, lease e lifecycle permanecem cobertos. Não foram adicionadas filas, timers ou buffers sem limite; limites de buffer continuam em fatia posterior.
+- O fechamento de PERF-1 tornou `INT-ALE-0 — Aletheia` elegível sem implementá-la. Sua classificação atual é `TERMINAL BLOCKED BY CEO PROTECTION`; não é falha nem implementação. Essa saída terminal permite que a linha independente do Athena-MCP avance sob WIP=1: `CFG-SEC-0 — snapshot` é a próxima elegível e permanece `NÃO INICIADA`. Nenhuma outra proposta M-20 a M-30 foi aprovada silenciosamente.
+
+## Classificação terminal INT-ALE-0 — Aletheia (2026-08-28)
+
+- Evidência fresca obtida somente por leitura: HEAD e upstream do repositório Aletheia estão ambos em `c7d2c6115887f91c4560897cc03a7681adc24f3f`; o worktree está limpo.
+- `athena_compat.py` agora retorna um objeto de resultado com `stdout` e `stderr`. A formulação anterior de incompatibilidade por retorno em string crua está obsoleta e não deve ser repetida.
+- O mesmo `athena_compat.py`, contudo, descarta explicitamente as entradas de modelo e timeout e aplica timeout fixo ao subprocesso. Portanto, o gate declarado — contrato público real corrigido e testes cross-repo sem mocks de forma — não está integralmente satisfeito; não se declara integração completa.
+- A proteção explícita do CEO contra modificação de Aletheia permanece vigente. Leitura e testes são permitidos; edição não. `INT-ALE-0` fica `TERMINAL BLOCKED BY CEO PROTECTION`, sem classificação de falha e sem implementação.
+- Pré-requisito de retomada: revogação explícita da proteção pelo CEO ou autorização estreita e explícita para editar Aletheia.
+- WIP=1 permanece vigente. A saída terminal bloqueada permite prosseguir apenas na linha independente do Athena-MCP; `CFG-SEC-0 — snapshot` é a próxima fatia elegível e continua `NÃO INICIADA`.
+
+## Checkpoint CFG-SEC-0 — snapshot seguro (2026-08-28)
+
+- CFG-SEC-0 está `CONCLUÍDA` após validação gerencial independente executada contra os bytes atuais do worktree (implementação já presente, não commitada, em `athena/config_loader.py`, `athena/bridge/runner.py`, `tests/test_config_loader.py`, `tests/test_bridge.py`, `tests/test_cfg0a_states.py`, `harness/README.md`).
+- Reparo de ambiente prévio à validação: o interpretador `.venv/bin/python3.12` era um symlink pendente para um app desinstalado; o symlink foi reapontado para `/opt/homebrew/bin/python3.12` preservando `site-packages` (inclui `aegis` editable, `pytest`, `ruff`) intactos. Ação local, reversível, sem efeito em dados do usuário ou em Git.
+- Evidência exata do fechamento: `git diff --check: PASS`; `ruff check` nos arquivos alterados de CFG-SEC-0: `PASS`; `pytest tests/test_config_loader.py`: `47 passed`; `pytest tests/test_config_loader.py tests/test_cfg0a_states.py tests/test_bridge.py`: `77 passed`; `harness/p0_gate.py`: `lint PASS`, `boundaries PASS`, `p0 PASS`; suíte integral `pytest tests -m "not regression"`: `369 passed, 3 deselected`; `pytest tests/test_benchmark_orchestration.py`: `20 passed`; benchmark real (`harness/benchmark_orchestration.py --samples 30 --warmups 3 --guardrail --bridge-ceiling-ms 5 --mcp-incremental-ceiling-ms 5`): guardrail `passed`, `bridge_over_direct p95: 0.441751 ms`, `incremental_mcp_over_bridge p95: 0.442125 ms`, ambos sob teto de 5 ms; cleanup MCP com `mcp_exit_code: 0`, `mcp_process_alive: false`, `terminal_runs_validated: 33`, `forced: false`.
+- Verificação pós-validação: nenhum processo órfão de teste (só os `athena-mcp` do `Athena-beta` long-running do desktop, preexistentes); nenhum arquivo temporário `.tmp`/`.snapshot.json.*` residual; hashes de `athena/api_mode.py` (`db8885c0…8b6d796`) e `tests/test_api_mode.py` (`da123ab4…d98150`) inalterados antes e depois da validação; `git status` mostra apenas o escopo já preexistente (config_loader, bridge/runner, testes correspondentes, docs de harness/contexto) sem expansão de escopo.
+- Conteúdo do reforço de segurança confirmado por leitura do diff: schemas estritos de provider/função com allowlist de campos; rejeição de qualquer valor de segredo embutido (chave, senha, token, `Authorization`, credenciais em `base_url`, incluindo userinfo e query string), exigindo `secret_ref` no formato `scheme:item`; parsing JSON com limite de profundidade/itens/bytes, UTF-8 estrito e rejeição de chave duplicada; leitura de partes ancorada por `dir_fd`/`O_NOFOLLOW` com bloqueio de symlink e de arquivo não regular; publicação atômica do `snapshot.json` por arquivo temporário exclusivo (`O_EXCL`, `0o600`), fsync do arquivo e do diretório, e `os.replace` dentro do mesmo `dir_fd`, com validação do candidato pelos bytes exatos antes da troca e preservação do snapshot anterior válido em caso de falha; `ConfigSnapshotCache` isola o objeto retornado por congelamento profundo (`MappingProxyType`/tupla) e descongelamento por cópia, prevenindo mutação cruzada entre chamadas.
+- Limite exato registrado: `write_snapshot` ancora toda a operação no descritor de diretório após `os.open(config_dir)`; a janela portátil residual é a substituição de um diretório ancestral imediatamente antes dessa abertura — nenhuma consulta de caminho é confiada depois desse ponto. Não há transação POSIX que abranja arquivos de partes independentes publicados por um escritor cooperante externo antes da chamada.
+- Este checkpoint não abre TASK-0 nem qualquer fatia posterior; apenas fecha CFG-SEC-0 na fila finish-to-start. `TASK-0 — contrato e durabilidade` torna-se a próxima fatia elegível sob WIP=1.
 
 ## Fechamento da fatia de CI
 
@@ -57,6 +178,7 @@
   - `.venv/bin/python harness/p0_gate.py` → `lint: PASS`, `boundaries: PASS`, `p0: PASS`
 
 ## Próxima fatia recomendada
+
 ## Fechamento da investigação — `transport/` sem consumidor
 
 - Veredito: **manter por enquanto; não é lacuna real do fluxo atual**. O pacote `athena.transport` está prematuro em relação aos contratos públicos atuais, mas encapsula uma fronteira de SSH remota já reconstruída e testada.
@@ -187,3 +309,12 @@
 
 - A rota de **documentação + Canvas** está aprovada com revisão posterior obrigatória por um chat-gerente e validações determinísticas de JSON, IDs, arestas, hashes e referências Git.
 - Próximo piloto ainda não aprovado: **implementação delimitada + testes**, preservando WIP=1, sem commit/push e com revisão independente antes de aceitar o relatório.
+
+### Checkpoint TASK-0 (2026-08-28)
+
+- Contrato escrito em `contexto/TASK-0-CONTRATO.md`; pacote `athena/tasks/` (contrato + validação + `SQLiteTaskStore`) implementado e integrado a `athena/mcp_server/` (contracts.py, server.py, __init__.py), `athena/mcp_stdio/application.py` e `athena/mcp_runtime.py`. Sete tools expostas (`run_combo`, `ask_provider`, `get_execution`, `list_executions`, `cancel_execution`, `submit_task`, `get_task`).
+- `tests/test_tasks.py` (29 testes, novo) cobre as 15 evidências de aceitação; `tests/test_mcp_server.py` e `tests/test_mcp_stdio.py` atualizados apenas nas asserções de nome/contagem de tools e na allowlist de imports do núcleo fechado.
+- Exceção pontual autorizada aplicada em `tests/test_eg3a_production.py`: somente a lista canônica de `tools/list` passou de cinco para sete tools; a lógica do Evidence Gate não mudou.
+- Correção adicional de contrato: `submit_task` agora anuncia schema explícito e fechado, incluindo o objeto `task`; `get_task` anuncia schema superior fechado. Os `maxLength` anunciados são hints em caracteres e o runtime permanece autoritativo em bytes UTF-8; a regressão estrutural cobre ambos os schemas e as sete tools.
+- Revalidação: `git diff --check` e Ruff passaram; 72 testes focados, `harness/p0_gate.py` e a suíte não-regressão (`393 passed, 3 deselected`, com `tests/test_api_mode.py` excluído) passaram. Smoke JSON-RPC real em dois processos comprovou submit no processo A e get no processo B. Benchmark 30 amostras/3 warmups: p95 bridge `0.385166 ms`, MCP incremental `0.4995 ms`, ambos sob 5 ms.
+- Hashes protegidos de `athena/api_mode.py` e `tests/test_api_mode.py` confirmados inalterados. TASK-0 está `COMPLETED`; CAP-0 é a próxima elegível e não foi iniciada. Nenhum commit/push realizado.

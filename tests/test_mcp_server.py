@@ -91,6 +91,8 @@ def test_minimum_tool_surface_is_public_and_directly_invocable(tmp_path: Path) -
         "get_execution",
         "list_executions",
         "cancel_execution",
+        "submit_task",
+        "get_task",
     )
     assert run_combo(server, combo, request_id="request-direct")["result"][
         "state"
@@ -183,7 +185,7 @@ def test_mcp_server_imports_only_authorized_core_packages() -> None:
         name.split(".")[1]
         for name in imports
         if name.startswith("athena.")
-    } <= {"router", "registry", "verifier", "execution", "profiles"}
+    } <= {"router", "registry", "verifier", "execution", "profiles", "tasks", "flow"}
 
 
 def test_new_core_contains_no_legacy_reference() -> None:

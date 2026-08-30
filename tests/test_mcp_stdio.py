@@ -26,6 +26,7 @@ from athena.mcp_stdio import (
 from athena.profiles import resolve_service_profile
 from athena.registry import ExecutionRegistry
 from athena.router import AllAttemptsFailed
+from tests.route0_support import routing_arguments, write_route_config
 
 
 class QueueInput:
@@ -168,6 +169,8 @@ def test_application_contract_and_exact_modular_tool_surface(tmp_path: Path) -> 
         "get_execution",
         "list_executions",
         "cancel_execution",
+        "submit_task",
+        "get_task",
     ]
 
 
@@ -317,6 +320,7 @@ def test_real_combo_timeout_returns_tool_error_and_leaves_no_orphan(
         "real-timeout",
         "run_combo",
         {
+            **routing_arguments(),
             "execution_id": "real-timeout-execution",
             "overall_timeout_s": timeout_s,
             "attempts": [
@@ -343,6 +347,12 @@ def test_real_combo_timeout_returns_tool_error_and_leaves_no_orphan(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env={
+            **os.environ,
+            "ATHENA_CONFIG_DIR": str(
+                write_route_config(tmp_path / "route-config", providers=("local",))
+            ),
+        },
     )
     started = time.monotonic()
     try:
@@ -428,4 +438,6 @@ def test_module_entrypoint_serves_ping_and_exact_tools() -> None:
         "get_execution",
         "list_executions",
         "cancel_execution",
+        "submit_task",
+        "get_task",
     }
