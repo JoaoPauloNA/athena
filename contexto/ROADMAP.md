@@ -1,6 +1,6 @@
 # Roadmap finish-to-start — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-26)
+## SNAPSHOT ATUAL (2026-08-30)
 
 - HEAD = origin/main = **`5319763`** · worktree limpo
 - **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
@@ -53,3 +53,9 @@ PERF-1 foi concluída em 2026-08-28 após validação gerencial independente for
 O sentinel fecha conservadoramente quando descendentes ordinários preservam o FD interno herdado, mas não garante detectar processo que, deliberadamente ou por política própria, feche todos os FDs herdados desconhecidos.
 
 `CFG-SEC-0 — snapshot`, TASK-0, CAP-0, ROUTE-0, FLOW-1, CLIO-0, MULTI-0, OLIMPO-0, MCP-2026, INT-ALE-0, THEMIS-1 e ARGOS-1 permanecem fechadas. Não há fatia ativa sob WIP=1.
+
+## Escopo adiante (2026-08-30)
+
+**Sem WIP de engenharia ativo.** Escopo runtime autorizado e verificado: 7 tools, Zeus/Nike/Chronos/EG-3A/Clio/Harmonia/Capsule/Iris/Olimpo-OLIMPO-0/Flow/Tasks (runtime baseline `5319763`).
+
+Fora do runtime autorizado (futuro, requer decisão/entrada): Content Gate (CG-0 corpus humano), Metis (ADR), Olimpo O-2..O-5 (visão completa), IAProxy logins zchat/kimi, aceite externo v1, fatias CFG-*/ESP-*/ECO-* restantes.

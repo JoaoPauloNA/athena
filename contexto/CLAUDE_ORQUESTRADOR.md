@@ -1,6 +1,6 @@
 # Contrato do gerente principal — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-26)
+## SNAPSHOT ATUAL (2026-08-30)
 
 - HEAD = origin/main = **`5319763`** · worktree limpo
 - **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
@@ -49,3 +49,7 @@ Este é o handoff curto para Claude principal ou Codex principal. O gerente ativ
 - BASE-0 e PERF-0 permanecem concluídas com seus fatos e limites históricos preservados. PERF-1 não implementou INT-ALE-0 nem qualquer fatia posterior; a classificação terminal bloqueada de INT-ALE-0 apenas torna CFG-SEC-0 elegível, sem iniciá-la, e nenhuma outra proposta M-20 a M-30 recebeu aprovação implícita.
 
 Para estado detalhado, ler `ESTADO_ATUAL.md`; para ordem, `ROADMAP.md`; para história e decisões extensas, `gerencia_athena-mcp.md`.
+
+## Última fatia fechada (2026-08-30)
+
+**Reconciliação documental final** (`a96c2e1` → correção final nesta fatia). Runtime baseline de evidência: `5319763` (715 testes, P0 fresh, 7 tools). ARGOS-1 e INT-ALE-0 foram fechadas antes, mas não são o gate mais recente. Regra vigente mantida: saída de GLM/OX exige revisão independente. **Modo de falha registrado:** a primeira reconciliação (`a96c2e1`) anexou notas atuais sem substituir seções ativas contraditórias — corrigido nesta fatia com substituição real das seções.

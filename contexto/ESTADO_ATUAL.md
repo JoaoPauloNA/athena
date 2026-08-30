@@ -1,8 +1,10 @@
 # Estado atual — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-26)
+## SNAPSHOT ATUAL (2026-08-30)
 
-- HEAD = origin/main = **`5319763`** · worktree limpo
+- **Runtime baseline (evidência de testes): `5319763`** — commits documentais não alteram essa evidência
+- Reconciliação documental anterior: `a96c2e1` · repositório limpo e alinhado na produção do handoff
+- HEAD atual: **verificar sempre via Git** (não fixado em documento)
 - **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
 - **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
 - **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
@@ -19,6 +21,11 @@
 Fotografia verificada diretamente em 2026-08-29. Esta classificação descreve o checkout local, não o beta, deploys ou outros repositórios.
 
 ## Base Git
+
+> **[HISTÓRICO — snapshot BASE-0]** O bloco de hashes abaixo reflete o momento
+> da fatia BASE-0. Estado atual: verificar sempre via Git; na reconciliação
+> documental de 2026-08-30 o repositório estava limpo e alinhado com
+> runtime baseline `5319763` e reconciliação documental `a96c2e1`.
 
 - Branch: `main`.
 - HEAD: `d69ba39a242fd5348a585dd94e83e83b5d1f489a`.
@@ -59,7 +66,7 @@ Fotografia verificada diretamente em 2026-08-29. Esta classificação descreve o
 - Registro e lease usados pelo runtime são voláteis. EOF abandona/cancela trabalho não terminal em vez de apenas desanexar o cliente.
 - O servidor usa `ThreadPoolExecutor` com limite de workers, mas fila interna sem backpressure explícito. A fronteira MCP ainda aceita receitas com comando, `cwd` e ambiente do cliente; ROUTE-0 impede que a ordem dessas receitas escolha o provider, e CAP-0 restringe autorização e ambiente antes do bridge.
 - PERF-1 removeu o `ps` repetido do caminho quente do bridge e passou a usar espera orientada à conclusão, sinais monotônicos limitados, inspeção atrasada/esparsa e sentinel POSIX herdado. O sentinel fecha conservadoramente para descendentes ordinários que preservam o FD interno herdado, mas não comprova detecção de processo que, deliberadamente ou por política própria, feche todos os FDs herdados desconhecidos.
-- Os seis commits locais ainda não estão em `origin/main`. Não se infere publicação, promoção do beta ou deploy a partir do estado local.
+- **[HISTÓRICO — BASE-0]** Os seis commits locais ainda não estavam em `origin/main`. Não se infere publicação, promoção do beta ou deploy a partir do estado local.
 - BASE-0 não reexecutou a suíte integral porque sua autorização era somente documental. Depois, a validação independente de PERF-0 registrou uma nova suíte integral verde, detalhada abaixo; isso não altera o fato histórico de BASE-0.
 
 ## Checkpoint PERF-0 — benchmark e SLO (2026-08-28)

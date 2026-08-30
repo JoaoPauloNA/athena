@@ -105,7 +105,8 @@ Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo
 ```bash
 .venv/bin/python harness/p0_gate.py           # lint/boundaries/p0 — PASS
 .venv/bin/python -m pytest tests -m "not regression" -q --ignore=tests/test_api_mode.py
-# 715 passed, 3 deselected (2026-08-26, HEAD 5319763)
+# 715 passed, 3 deselected — runtime baseline 5319763;
+# documentation-only commits do not change this test evidence.
 ```
 
 `tests/test_api_mode.py` e `athena/api_mode.py` são arquivos protegidos do usuário (hash-verificados; não executados nesta suíte).
