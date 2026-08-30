@@ -1,0 +1,62 @@
+"""Submissão de tarefa durável e idempotente (TASK-0). FLOW-1 lifecycle."""
+
+from __future__ import annotations
+
+from .contracts import (
+    DEFAULT_PRIORITY,
+    DELIVERY_STATUS_AWAITING,
+    MAX_CANONICAL_TASK_BYTES,
+    MAX_IDEMPOTENCY_KEY_BYTES,
+    MAX_INPUT_BYTES,
+    MAX_JSON_DEPTH,
+    MAX_JSON_ITEMS,
+    MAX_PRIORITY,
+    MAX_PROJECT_REF_BYTES,
+    MAX_TASK_TYPE_LENGTH,
+    MIN_PRIORITY,
+    STABLE_REASON_CODES,
+    VALID_CHRONOS_ACTIONS,
+    VALID_VALIDATION_STATUSES,
+    SubmitTaskResult,
+    TaskHandleNotFound,
+    TaskIdempotencyConflict,
+    TaskNotExecutable,
+    TaskRecord,
+    TaskStoreContract,
+    TaskStoreUnavailable,
+    TaskSubmission,
+    TaskValidationError,
+    TerminalProjection,
+)
+from .sqlite_store import SQLiteTaskStore, resolve_state_dir
+from .validation import build_submission
+
+__all__ = [
+    "DEFAULT_PRIORITY",
+    "DELIVERY_STATUS_AWAITING",
+    "MAX_CANONICAL_TASK_BYTES",
+    "MAX_IDEMPOTENCY_KEY_BYTES",
+    "MAX_INPUT_BYTES",
+    "MAX_JSON_DEPTH",
+    "MAX_JSON_ITEMS",
+    "MAX_PRIORITY",
+    "MAX_PROJECT_REF_BYTES",
+    "MAX_TASK_TYPE_LENGTH",
+    "MIN_PRIORITY",
+    "STABLE_REASON_CODES",
+    "VALID_CHRONOS_ACTIONS",
+    "VALID_VALIDATION_STATUSES",
+    "SQLiteTaskStore",
+    "SubmitTaskResult",
+    "TaskHandleNotFound",
+    "TaskIdempotencyConflict",
+    "TaskNotExecutable",
+    "TaskRecord",
+    "TaskStoreContract",
+    "TaskStoreUnavailable",
+    "TaskSubmission",
+    "TaskValidationError",
+    "TerminalProjection",
+    "build_submission",
+    "resolve_state_dir",
+]
