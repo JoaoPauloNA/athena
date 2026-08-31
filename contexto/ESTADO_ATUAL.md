@@ -20,6 +20,8 @@
 
 Fotografia verificada diretamente em 2026-08-29. Esta classificação descreve o checkout local, não o beta, deploys ou outros repositórios.
 
+- **ADR-0001** (`docs/adr/`): escopo v1 fechado — Content Gate OPTIONAL_FUTURE, Metis DEFERRED_BY_ADR, IAProxy OPTIONAL_NOT_CONFIGURED, aceite externo EXTERNAL_ACCEPTANCE_PENDING, SSH INTENTIONALLY_CLOSED, Olimpo O-2..O-5 OPTIONAL_FUTURE.
+
 ## Base Git
 
 > **[HISTÓRICO — snapshot BASE-0]** O bloco de hashes abaixo reflete o momento

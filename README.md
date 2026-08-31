@@ -110,3 +110,18 @@ Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo
 ```
 
 `tests/test_api_mode.py` e `athena/api_mode.py` são arquivos protegidos do usuário (hash-verificados; não executados nesta suíte).
+
+
+## Classificações terminais v1 (ADR-0001)
+
+| Item | Classificação |
+|---|---|
+| Núcleo 7-tool + módulos internos | IMPLEMENTED_AND_VERIFIED (runtime baseline `5319763`) |
+| IAProxy zchat/kimi | OPTIONAL_NOT_CONFIGURED (login manual do usuário; nunca automatizado) |
+| Content Gate | OPTIONAL_FUTURE (corpus humano CG-0 inexistente; nunca fabricado) |
+| Aceite externo | EXTERNAL_ACCEPTANCE_PENDING |
+| Olimpo O-2..O-5 | OPTIONAL_FUTURE |
+| Metis | DEFERRED_BY_ADR (ADR-0001 §7) |
+| SSH | INTENTIONALLY_CLOSED (D-SSH) |
+
+Nenhum item opcional bloqueia o fechamento técnico do v1. Detalhes: `docs/adr/ADR-0001-v1-scope-and-deferrals.md`.

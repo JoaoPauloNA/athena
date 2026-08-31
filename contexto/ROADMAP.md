@@ -40,6 +40,8 @@ Código rastreado anterior à criação desta fila existe em áreas relacionadas
 
 M-19 foi decidida explicitamente pelo CEO e fechada em ROUTE-0. Em 2026-08-30 o CEO autorizou alterações em Aletheia, Themis e Argos; INT-ALE-0 foi fechada em 2026-08-30. M-20 a M-30 continuam propostas aguardando decisão. Nenhuma fatia autoriza por si só commit, push, beta, release, deploy, credenciais, ação destrutiva ou infraestrutura paga.
 
+- **ADR-0001** (`docs/adr/`): escopo v1 fechado — Content Gate OPTIONAL_FUTURE, Metis DEFERRED_BY_ADR, IAProxy OPTIONAL_NOT_CONFIGURED, aceite externo EXTERNAL_ACCEPTANCE_PENDING, SSH INTENTIONALLY_CLOSED, Olimpo O-2..O-5 OPTIONAL_FUTURE.
+
 ## Próxima transição
 
 `INT-ALE-0 — Aletheia` foi concluída em 2026-08-30 após passo de correção mínima, reparo do gate P0 (`duplicate in-flight request id` → `-32602`) e validação independente. Evidência exata: P0 lint/boundaries/p0 `PASS`; suíte Athena `-m "not regression"` excluindo `test_api_mode.py` `715 passed, 3 deselected`; cross-repo Aletheia `24 passed`; suíte Aletheia `97 passed`; `test_duplicate_and_invalid_long_ids_do_not_launch_handlers` `5/5`; hashes protegidos inalterados.
