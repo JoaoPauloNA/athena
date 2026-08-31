@@ -1,8 +1,22 @@
 # Athena-MCP
 
+[Português](README.md) · [English](README.en.md)
+
 Servidor MCP (stdio, JSON-RPC) para **execução governada de CLIs de agentes de IA** na sua máquina: combos ordenados com fallback controlado, lease de workspace, deadlines com cancelamento confiável e verificação determinística + advisory do resultado.
 
-> **Status:** beta modular para uso local e single-user. POSIX (macOS/Linux). Windows não é suportado nesta versão.
+> **Status:** Athena v1 tecnicamente fechado e verificado para uso local e
+> single-user. POSIX (macOS/Linux). Windows não é suportado nesta versão.
+
+## Estado da distribuição v1
+
+- O runtime público expõe sete tools MCP e preserva as autoridades separadas
+  de Zeus, Nike, Aegis, Chronos e Evidence Gate.
+- O checkout `Athena-beta` já contém o runtime funcional do v1. Em 2026-08-31,
+  a diferença restante para o checkout principal era somente documentação e
+  testes adicionais de instalação/CAS, sem mudança no código de runtime.
+- A validação corrente protegida registra `716 passed, 3 deselected`; o
+  baseline histórico de evidência do runtime permanece `5319763`, com
+  `715 passed, 3 deselected`.
 
 ## O que faz
 
@@ -62,6 +76,23 @@ Registro no cliente MCP (exemplo Claude Desktop):
 - **Sem sandbox forte**: as CLIs executadas rodam com as permissões do seu usuário no workspace informado — use diretórios de trabalho dedicados.
 - **Fallback automático**: perfis `authenticated_external` e `unknown` nunca fazem fallback automático (política fail-closed do Aegis).
 - Aprovação humana inline (`REQUIRES_HUMAN_APPROVAL`) está reservada no contrato do Aegis e ainda não é emitida.
+
+## Publicação curada e segurança
+
+O Athena adota um **monorepo público modular**. Zeus, Nike, Chronos, Evidence
+Gate, Clio, Harmonia, Capsule e Iris possuem fronteiras próprias, mas permanecem
+no núcleo enquanto não houver necessidade comprovada de ciclo de release ou
+consumidor externo independente.
+
+O material público pode conter código, contratos, schemas, testes, documentação
+e templates sanitizados. Prompts proprietários completos pertencem a um
+repositório privado separado; prompts preenchidos com dados reais, conversas,
+respostas privadas, caminhos pessoais, tokens, chaves, cookies e sessões OAuth
+não pertencem a nenhum repositório Git, mesmo privado.
+
+Português é a documentação canônica e inglês é a primeira tradução mantida.
+Outros idiomas entram somente quando houver demanda e revisão editorial capaz
+de impedir divergência entre versões.
 
 ## Arquitetura (resumo)
 
