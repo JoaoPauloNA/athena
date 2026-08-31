@@ -1,6 +1,6 @@
 # Estado atual — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-30)
+## SNAPSHOT V1 TERMINAL (2026-08-31)
 
 - **Runtime baseline (evidência de testes): `5319763`** — commits documentais não alteram essa evidência
 - Reconciliação documental anterior: `a96c2e1` · repositório limpo e alinhado na produção do handoff
@@ -11,8 +11,8 @@
 - Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
 - D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)
 - D2–D15: evidência de suíte focais/componentes/integração (não todas e2e)
-- Sem WIP ativo após esta fatia de documentação
-- Bloqueios externos: corpus CG-0 humano · login zchat/kimi · aceite externo v1
+- Sem WIP de engenharia ativo após o fechamento técnico v1
+- Estados terminais não bloqueantes: Content Gate `OPTIONAL_FUTURE`; Metis `DEFERRED_BY_ADR`; zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`
 - Arquivos protegidos hash-verificados (`db8885c0…`/`da123ab4…`)
 > **Histórico abaixo**: valores de HEAD/remotes anteriores a `5319763` são históricos.
 
@@ -20,7 +20,7 @@
 
 Fotografia verificada diretamente em 2026-08-29. Esta classificação descreve o checkout local, não o beta, deploys ou outros repositórios.
 
-- **ADR-0001** (`docs/adr/`): escopo v1 fechado — Content Gate OPTIONAL_FUTURE, Metis DEFERRED_BY_ADR, IAProxy OPTIONAL_NOT_CONFIGURED, aceite externo EXTERNAL_ACCEPTANCE_PENDING, SSH INTENTIONALLY_CLOSED, Olimpo O-2..O-5 OPTIONAL_FUTURE.
+- **ADR-0001** (`docs/adr/ADR-0001-v1-scope-and-deferrals.md`): escopo v1 terminal; as classificações opcionais e diferidas são estados finais e não defeitos do núcleo.
 
 ## Base Git
 
@@ -47,7 +47,7 @@ Fotografia verificada diretamente em 2026-08-29. Esta classificação descreve o
 - FLOW-1 liga uma tarefa durável a uma execução ROUTE-0/CAP-0, verificação determinística, Evidence Gate e Chronos; persiste projeção terminal sanitizada consultável após reinício, mantendo entrega em revisão humana.
 - CLIO-0 registra eventos técnicos FLOW em SQLite local fora do caminho quente, com quatro níveis, precedência anti-elevação, fila e writers limitados, retenção e modo `none` sem storage comum.
 - MULTI-0 entrega Harmonia determinística interna, DAG e grupos limitados, backpressure/tokens, leases atômicos FIFO com heartbeat/TTL, isolamento por worktree sintética e verificação de write-set. Não adiciona tool MCP nem constitui sandbox de sistema operacional.
-- OLIMPO-0 entrega adapter HTTP opt-in em loopback, composição explícita, frontend responsivo local, CSP/CSRF, projeções sanitizadas, CAS de configuração e estados indisponíveis sem dados fictícios. Não inicia com o MCP nem ganha autoridade operacional.
+- OLIMPO-0 entrega biblioteca HTTP opt-in em loopback, composição explícita, frontend responsivo local, CSP/CSRF, projeções sanitizadas e publicação de configuração validada por preview + CAS. Não inicia com o MCP e não executa, cancela nem autoriza tarefas.
 - MCP-2026 entrega adapter dual-era stdio para `2026-07-28`: prevalidação antes de reserva, `server/discover` só com `_meta` moderno completo, validação JSON genérica limitada, envelopes modernos com `resultType: complete` e `serverInfo`, cancelamento in-flight-only com lock até escrita, identidade `0.2.0` e legado `initialize`/`2024-11-05` preservado. Sete tools inalteradas; sem `structuredContent`/`outputSchema`.
 - INT-ALE-0 fecha a ponte pública Aletheia ↔ Athena: `ask_provider` retorna `ProviderResult` estruturado; modelo chega como argv `--model` separado; timeout vira deadline real do lifecycle; snapshot corrupto falha fechado; fallback só com snapshot ausente; modelo/timeout validados antes da execução.
 

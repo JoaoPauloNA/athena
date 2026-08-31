@@ -26,13 +26,13 @@ Commits documentais posteriores não alteram a evidência de runtime.
 zchat/kimi dependem de login manual do usuário. Ausência de sessão:
 - não falha startup, submissão ou status core do v1;
 - não dispara retry nem ruído no hot path;
-- qwen/deepsweep ou qualquer adaptador disponível pode ser validado; nenhum é obrigatório.
+- Qwen/DeepSeek ou qualquer adaptador disponível pode ser validado; nenhum é obrigatório.
 
 ### 3. Content Gate — OPTIONAL_FUTURE (corpus CG-0)
 
-Não é mandatório para o v1 técnico. Pipeline técnico completo; calibração
-exige corpus humano 50–100 anotado, que não existe e nunca será fabricado.
-Termina como OPTIONAL_FUTURE até CG-0 existir.
+Não é mandatório para o v1 técnico e **não está implementado**. Qualquer futura
+calibração exige corpus humano CG-0 anotado, que não existe e nunca será
+fabricado por modelo. Termina como OPTIONAL_FUTURE até CG-0 existir.
 
 ### 4. Aceite externo — EXTERNAL_ACCEPTANCE_PENDING
 
@@ -40,8 +40,10 @@ Evidência valiosa pós-release; não bloqueia fechamento interno técnico.
 
 ### 5. Olimpo — OLIMPO-0 implementado; O-2..O-5 OPTIONAL_FUTURE
 
-OLIMPO-0 (read-only local loopback) cobre a operação segura do v1.
-Expansão meramente percentual é proibida.
+OLIMPO-0 é um adapter local opt-in em loopback: observa estado e permite somente
+publicação de configuração validada por preview + compare-and-swap. Não executa,
+não cancela e não autoriza trabalho. Esse escopo mínimo cobre a operação segura
+do v1; O-2..O-5 permanecem OPTIONAL_FUTURE. Expansão meramente percentual é proibida.
 
 ### 6. SSH — INTENTIONALLY_CLOSED (D-SSH)
 

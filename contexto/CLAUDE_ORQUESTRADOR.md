@@ -1,22 +1,22 @@
 # Contrato do gerente principal — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-30)
+## SNAPSHOT V1 TERMINAL (2026-08-31)
 
 - **Runtime baseline de evidência:** `5319763` — P0 lint/boundaries/p0 `PASS`; suíte completa protegida `715 passed, 3 deselected`; sete tools MCP.
 - **Commits documentais anteriores:** `a96c2e1` e `ee13dad`. Eles reconciliam documentação; não substituem a baseline de runtime.
 - O repositório estava limpo e alinhado com `origin/main` quando inspecionado. **O HEAD corrente deve ser sempre verificado diretamente pelo Git**; este documento não fixa o hash do commit que o altera.
 - D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed).
 - D2–D15: evidência de suítes focais, componentes e integração; nem todas são e2e.
-- Sem WIP ativo após a reconciliação documental canônica.
-- Bloqueios externos: corpus humano CG-0 · login manual zchat/kimi · aceite externo v1.
+- Sem WIP de engenharia ativo após o fechamento técnico v1.
+- ADR-0001 fecha como não bloqueantes: Content Gate `OPTIONAL_FUTURE`; Metis `DEFERRED_BY_ADR`; zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`.
 - Arquivos protegidos permaneceram fora do escopo e foram preservados.
 > **Histórico abaixo:** hashes, contagens e gates anteriores permanecem somente como checkpoints datados; não representam o HEAD corrente.
 
 ## Último gate fechado
 
-- **Reconciliação documental canônica:** **FECHADA** em 2026-08-30, com substituição dos trechos ativos contraditórios em vez de simples anexação de notas novas.
-- Evidência documental anterior: commits `a96c2e1` e `ee13dad`; o commit desta correção deve ser consultado pelo Git, não embutido neste arquivo.
-- **Checkpoints históricos já fechados:** INT-ALE-0, THEMIS-1 e ARGOS-1. Nenhuma dessas fatias é o gate mais recente.
+- **Fechamento técnico Athena v1:** **FECHADO** em 2026-08-31 sob ADR-0001, após validação fresca do runtime, beta, repositórios independentes e documentação canônica.
+- O commit corrente deve ser consultado pelo Git, não embutido neste arquivo.
+- **Checkpoints históricos já fechados:** reconciliação documental, INT-ALE-0, THEMIS-1 e ARGOS-1. Nenhum reabre WIP.
 
 Este é o handoff curto para Claude principal ou Codex principal. O gerente ativo decide, delimita e revisa; o executor trabalha apenas na fatia explícita e não ganha autoridade arquitetural.
 
@@ -29,7 +29,7 @@ Este é o handoff curto para Claude principal ou Codex principal. O gerente ativ
 
 ## Handoff atual
 
-- Última fatia fechada: **reconciliação documental canônica**, concluída em 2026-08-30 após revisão semântica das seções ativas e validação das referências Git.
+- Última fatia fechada: **fechamento técnico Athena v1**, concluído em 2026-08-31 sob ADR-0001 após validação proporcional e reconciliação canônica.
 - **Checkpoint histórico — INT-ALE-0:** integração Aletheia ↔ Athena concluída após reparo P0 e validação independente; fallback não autoritativo somente sem `snapshot.json` e flag de modelo fixa `--model`.
 - **Checkpoints históricos — THEMIS-1 e ARGOS-1:** Themis v0.2 separado com `54 passed`; Argos observacional separado com `28 passed` e smoke real. Esses checkpoints antecedem a reconciliação documental atual.
 - PERF-0 e PERF-1 permanecem fechados.
@@ -46,6 +46,6 @@ Este é o handoff curto para Claude principal ou Codex principal. O gerente ativ
 
 Para estado detalhado, ler `ESTADO_ATUAL.md`; para ordem, `ROADMAP.md`; para história e decisões extensas, `gerencia_athena-mcp.md`.
 
-## Última fatia fechada (2026-08-30)
+## Última fatia fechada (2026-08-31)
 
-**Reconciliação documental final** (`a96c2e1` → correção final nesta fatia). Runtime baseline de evidência: `5319763` (715 testes, P0 fresh, 7 tools). ARGOS-1 e INT-ALE-0 foram fechadas antes, mas não são o gate mais recente. Regra vigente mantida: saída de GLM/OX exige revisão independente. **Modo de falha registrado:** a primeira reconciliação (`a96c2e1`) anexou notas atuais sem substituir seções ativas contraditórias — corrigido nesta fatia com substituição real das seções.
+**Fechamento técnico Athena v1.** Runtime baseline de evidência: `5319763` (715 testes, P0 fresh, 7 tools); validação fresca repetiu os mesmos gates. ADR-0001 torna itens opcionais terminais sem ampliar o runtime. Regra vigente: saída de GLM/OX exige revisão independente; o HEAD corrente é sempre consultado no Git.

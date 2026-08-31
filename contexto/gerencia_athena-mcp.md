@@ -1,18 +1,15 @@
 # Gerência Técnica — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-26)
+## SNAPSHOT V1 TERMINAL (2026-08-31)
 
-- HEAD = origin/main = **`5319763`** · worktree limpo
-- **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
-- **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
-- **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
-- Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
-- D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)
-- D2–D15: evidência de suíte focais/componentes/integração (não todas e2e)
-- Sem WIP ativo após esta fatia de documentação
-- Bloqueios externos: corpus CG-0 humano · login zchat/kimi · aceite externo v1
-- Arquivos protegidos hash-verificados (`db8885c0…`/`da123ab4…`)
-> **Histórico abaixo**: valores de HEAD/remotes anteriores a `5319763` são históricos.
+- **HEAD corrente:** verificar via Git; na abertura desta reconciliação o repositório estava limpo e alinhado em `ac000d8`.
+- **Runtime baseline:** `5319763` — P0 `PASS`; suíte protegida `715 passed, 3 deselected`; sete tools MCP; beta equivalente ao runtime e smoke-verified.
+- **ADR-0001:** escopo v1 terminal — Content Gate `OPTIONAL_FUTURE`; Metis `DEFERRED_BY_ADR`; IAProxy zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`; Olimpo O-2..O-5 `OPTIONAL_FUTURE`.
+- **OLIMPO-0:** biblioteca HTTP opt-in em loopback para observação e publicação de configuração validada por preview + CAS; não executa, cancela nem autoriza tarefas.
+- **WIP de engenharia:** vazio após o fechamento v1. Itens opcionais acima são estados terminais, não bloqueios ativos.
+- **Arquivos protegidos:** preservados e verificados somente por SHA-256.
+> **Histórico abaixo:** hashes, filas e bloqueios anteriores permanecem como checkpoints datados; não substituem este snapshot terminal.
+
 
 
 

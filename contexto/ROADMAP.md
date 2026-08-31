@@ -1,18 +1,15 @@
 # Roadmap finish-to-start — Athena-MCP
 
-## SNAPSHOT ATUAL (2026-08-30)
+## SNAPSHOT V1 TERMINAL (2026-08-31)
 
-- HEAD = origin/main = **`5319763`** · worktree limpo
-- **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
-- **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
-- **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
-- Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
-- D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)
-- D2–D15: evidência de suíte focais/componentes/integração (não todas e2e)
-- Sem WIP ativo após esta fatia de documentação
-- Bloqueios externos: corpus CG-0 humano · login zchat/kimi · aceite externo v1
-- Arquivos protegidos hash-verificados (`db8885c0…`/`da123ab4…`)
-> **Histórico abaixo**: valores de HEAD/remotes anteriores a `5319763` são históricos.
+- **HEAD corrente:** verificar via Git; na abertura desta reconciliação o repositório estava limpo e alinhado em `ac000d8`.
+- **Runtime baseline:** `5319763` — P0 `PASS`; suíte protegida `715 passed, 3 deselected`; sete tools MCP; beta equivalente ao runtime e smoke-verified.
+- **ADR-0001:** escopo v1 terminal — Content Gate `OPTIONAL_FUTURE`; Metis `DEFERRED_BY_ADR`; IAProxy zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`; Olimpo O-2..O-5 `OPTIONAL_FUTURE`.
+- **OLIMPO-0:** biblioteca HTTP opt-in em loopback para observação e publicação de configuração validada por preview + CAS; não executa, cancela nem autoriza tarefas.
+- **WIP de engenharia:** vazio após o fechamento v1. Itens opcionais acima são estados terminais, não bloqueios ativos.
+- **Arquivos protegidos:** preservados e verificados somente por SHA-256.
+> **Histórico abaixo:** hashes, filas e bloqueios anteriores permanecem como checkpoints datados; não substituem este snapshot terminal.
+
 
 
 
@@ -40,9 +37,9 @@ Código rastreado anterior à criação desta fila existe em áreas relacionadas
 
 M-19 foi decidida explicitamente pelo CEO e fechada em ROUTE-0. Em 2026-08-30 o CEO autorizou alterações em Aletheia, Themis e Argos; INT-ALE-0 foi fechada em 2026-08-30. M-20 a M-30 continuam propostas aguardando decisão. Nenhuma fatia autoriza por si só commit, push, beta, release, deploy, credenciais, ação destrutiva ou infraestrutura paga.
 
-- **ADR-0001** (`docs/adr/`): escopo v1 fechado — Content Gate OPTIONAL_FUTURE, Metis DEFERRED_BY_ADR, IAProxy OPTIONAL_NOT_CONFIGURED, aceite externo EXTERNAL_ACCEPTANCE_PENDING, SSH INTENTIONALLY_CLOSED, Olimpo O-2..O-5 OPTIONAL_FUTURE.
+- **ADR-0001** (`docs/adr/ADR-0001-v1-scope-and-deferrals.md`): escopo v1 fechado; classificações opcionais e diferidas são terminais e não reabrem WIP.
 
-## Próxima transição
+## Fechamento terminal e checkpoints históricos
 
 `INT-ALE-0 — Aletheia` foi concluída em 2026-08-30 após passo de correção mínima, reparo do gate P0 (`duplicate in-flight request id` → `-32602`) e validação independente. Evidência exata: P0 lint/boundaries/p0 `PASS`; suíte Athena `-m "not regression"` excluindo `test_api_mode.py` `715 passed, 3 deselected`; cross-repo Aletheia `24 passed`; suíte Aletheia `97 passed`; `test_duplicate_and_invalid_long_ids_do_not_launch_handlers` `5/5`; hashes protegidos inalterados.
 
@@ -56,8 +53,8 @@ O sentinel fecha conservadoramente quando descendentes ordinários preservam o F
 
 `CFG-SEC-0 — snapshot`, TASK-0, CAP-0, ROUTE-0, FLOW-1, CLIO-0, MULTI-0, OLIMPO-0, MCP-2026, INT-ALE-0, THEMIS-1 e ARGOS-1 permanecem fechadas. Não há fatia ativa sob WIP=1.
 
-## Escopo adiante (2026-08-30)
+## Estado terminal v1 (2026-08-31)
 
-**Sem WIP de engenharia ativo.** Escopo runtime autorizado e verificado: 7 tools, Zeus/Nike/Chronos/EG-3A/Clio/Harmonia/Capsule/Iris/Olimpo-OLIMPO-0/Flow/Tasks (runtime baseline `5319763`).
+**Sem WIP de engenharia ativo.** Escopo obrigatório autorizado e verificado: sete tools, Zeus/Nike/Chronos/EG-3A/Clio/Harmonia/Capsule/Iris/OLIMPO-0/Flow/Tasks (runtime baseline `5319763`).
 
-Fora do runtime autorizado (futuro, requer decisão/entrada): Content Gate (CG-0 corpus humano), Metis (ADR), Olimpo O-2..O-5 (visão completa), IAProxy logins zchat/kimi, aceite externo v1, fatias CFG-*/ESP-*/ECO-* restantes.
+Estados terminais fora do runtime obrigatório: Content Gate `OPTIONAL_FUTURE` até CG-0; Metis `DEFERRED_BY_ADR`; Olimpo O-2..O-5 `OPTIONAL_FUTURE`; zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`. Reabertura exige nova decisão canônica.

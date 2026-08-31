@@ -28,18 +28,20 @@ Servidor MCP (stdio, JSON-RPC) para **execução governada de CLIs de agentes de
 Requisitos: Python ≥ 3.11, pip, Git.
 
 ```bash
-# 1. Dependência privada de risco/política (athena-aegis)
+# 1. Checkouts irmãos
 git clone git@github.com:JoaoPauloNA/aegis.git ../aegis
-pip install -e ../aegis
-
-# 2. Athena-MCP (sem resolver dependências automaticamente)
 git clone git@github.com:JoaoPauloNA/athena.git
 cd athena
-python -m venv .venv && source .venv/bin/activate
-pip install -e . --no-deps
 
-# 3. Verificação
-python -m pytest tests -m "not regression"   # suíte deve passar
+# 2. Um único ambiente virtual para Athena + Aegis
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ../aegis
+python -m pip install -e ".[dev]" --no-deps
+
+# 3. Verificação protegida
+python harness/p0_gate.py
+python -m pytest tests -m "not regression" -q --ignore=tests/test_api_mode.py
 ```
 
 Registro no cliente MCP (exemplo Claude Desktop):
@@ -56,7 +58,7 @@ Registro no cliente MCP (exemplo Claude Desktop):
 
 - **POSIX-only**: o bridge usa grupos de processo e PTY POSIX; encerramento em Windows não é garantido (`TERMINATION_UNCONFIRMED`).
 - **Single-user**: processo stdio local por usuário; sem rede, sem autenticação, sem multiusuário.
-- **Sem dashboard de produção**: as tools MCP são a interface operacional. O adaptador **Olimpo** (OLIMPO-0) existe como app local opt-in read-only em loopback para configuração/observação — não é dashboard completo de produto.
+- **Sem dashboard de produção**: as tools MCP são a interface operacional. **Olimpo OLIMPO-0** é uma biblioteca HTTP local opt-in em loopback para observação e publicação de configuração validada por preview + CAS; não executa, cancela ou autoriza tarefas e não é o produto Olimpo completo.
 - **Sem sandbox forte**: as CLIs executadas rodam com as permissões do seu usuário no workspace informado — use diretórios de trabalho dedicados.
 - **Fallback automático**: perfis `authenticated_external` e `unknown` nunca fazem fallback automático (política fail-closed do Aegis).
 - Aprovação humana inline (`REQUIRES_HUMAN_APPROVAL`) está reservada no contrato do Aegis e ainda não é emitida.
@@ -98,7 +100,7 @@ Ver [LICENSE](LICENSE).
 
 ## Módulos internos (não são repositórios)
 
-Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo governado) · Evidence Gate (EG-1 motor + EG-3A sink opt-in) · Clio (logging 4 níveis) · Harmonia (paralelismo/write-sets) · Capsule (ambiente mínimo com seal) · Iris (preflight) · Olimpo (adaptador local read-only) · Flow/Tasks (durabilidade) · Lease · config loader · bridge · SSH transport (dormente, D-SSH).
+Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo governado) · Evidence Gate (EG-1 motor + EG-3A sink opt-in) · Clio (logging 4 níveis) · Harmonia (paralelismo/write-sets) · Capsule (ambiente mínimo com seal) · Iris (preflight) · Olimpo (biblioteca HTTP loopback opt-in; observação + configuração CAS) · Flow/Tasks (durabilidade) · Lease · config loader · bridge · SSH transport (dormente, D-SSH).
 
 ## Testes (comando exato e contagem fresh)
 
@@ -125,3 +127,7 @@ Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo
 | SSH | INTENTIONALLY_CLOSED (D-SSH) |
 
 Nenhum item opcional bloqueia o fechamento técnico do v1. Detalhes: `docs/adr/ADR-0001-v1-scope-and-deferrals.md`.
+
+### Olimpo OLIMPO-0
+
+OLIMPO-0 é uma **biblioteca**, não um daemon instalado nem parte do startup MCP. A composição autorizada instancia `athena.olimpo.OlimpoHttpServer` com dependências explícitas e chama `start()`; o servidor recusa bind fora de `127.0.0.1`, gera/exige CSRF e deve ser encerrado com `shutdown()`. O smoke HTTP real e o CAS de configuração são cobertos por `tests/test_olimpo_e2e.py`.
