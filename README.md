@@ -37,7 +37,7 @@ cd athena
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ../aegis
-python -m pip install -e ".[dev]" --no-deps
+python -m pip install -e ".[dev]"
 
 # 3. Verificação protegida
 python harness/p0_gate.py
@@ -107,8 +107,8 @@ Zeus (elegibilidade) · Nike (resolução de runtime/provider) · Chronos (ciclo
 ```bash
 .venv/bin/python harness/p0_gate.py           # lint/boundaries/p0 — PASS
 .venv/bin/python -m pytest tests -m "not regression" -q --ignore=tests/test_api_mode.py
-# 715 passed, 3 deselected — runtime baseline 5319763;
-# documentation-only commits do not change this test evidence.
+# 716 passed, 3 deselected — current protected-aware suite after install-smoke hardening;
+# runtime evidence baseline remains 5319763 (715 passed, 3 deselected).
 ```
 
 `tests/test_api_mode.py` e `athena/api_mode.py` são arquivos protegidos do usuário (hash-verificados; não executados nesta suíte).

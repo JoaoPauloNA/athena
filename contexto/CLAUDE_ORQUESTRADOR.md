@@ -2,7 +2,7 @@
 
 ## SNAPSHOT V1 TERMINAL (2026-08-31)
 
-- **Runtime baseline de evidência:** `5319763` — P0 lint/boundaries/p0 `PASS`; suíte completa protegida `715 passed, 3 deselected`; sete tools MCP.
+- **Runtime baseline de evidência:** `5319763` — P0 lint/boundaries/p0 `PASS`; suíte histórica `715 passed, 3 deselected`; sete tools MCP. Suíte corrente após hardening de instalação: `716 passed, 3 deselected`.
 - **Commits documentais anteriores:** `a96c2e1` e `ee13dad`. Eles reconciliam documentação; não substituem a baseline de runtime.
 - O repositório estava limpo e alinhado com `origin/main` quando inspecionado. **O HEAD corrente deve ser sempre verificado diretamente pelo Git**; este documento não fixa o hash do commit que o altera.
 - D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed).

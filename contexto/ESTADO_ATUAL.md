@@ -6,7 +6,7 @@
 - Reconciliação documental anterior: `a96c2e1` · repositório limpo e alinhado na produção do handoff
 - HEAD atual: **verificar sempre via Git** (não fixado em documento)
 - **P0**: lint PASS · boundaries PASS · p0 PASS (fresh)
-- **Suíte completa protegida**: **715 passed, 3 deselected** (fresh, excl. tests/test_api_mode.py)
+- **Suíte completa protegida corrente**: **716 passed, 3 deselected** após hardening de instalação (fresh, excl. tests/test_api_mode.py); baseline `5319763`: 715 passed, 3 deselected
 - **7 tools MCP**: run_combo · ask_provider · get_execution · list_executions · cancel_execution · submit_task · get_task
 - Beta `5319763` repromovida e smoke-verified (resíduo do usuário preservado)
 - D1 integração real e2e (MCP→Zeus→Nike→Aegis→bridge→EG-3A sink atômico→completed)

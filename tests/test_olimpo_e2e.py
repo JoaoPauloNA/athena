@@ -282,8 +282,20 @@ def test_health_and_tasks_unavailable_vs_available(
 
 def test_config_preview_apply_cas(tmp_path: Path) -> None:
     config_dir = write_route_config(tmp_path / "cfg", providers=("ollama",))
+    snapshot_path = config_dir / "snapshot.json"
+    original_bytes = snapshot_path.read_bytes()
+    current_hash = hashlib.sha256(original_bytes).hexdigest()
+    providers_path = config_dir / "providers.json"
+    providers = json.loads(providers_path.read_text(encoding="utf-8"))
+    providers["codex"] = {
+        "mode": "agent_cli",
+        "runtime_class": "local",
+        "enabled": True,
+        "approved": True,
+        "command": "codex",
+    }
+    providers_path.write_text(json.dumps(providers, sort_keys=True), encoding="utf-8")
     manifest = build_manifest(config_dir)
-    current_hash = hashlib.sha256((config_dir / "snapshot.json").read_bytes()).hexdigest()
 
     deps = compose_dependencies(
         CompositionSources(package_version="0.2.0", config_dir=config_dir)
@@ -312,6 +324,9 @@ def test_config_preview_apply_cas(tmp_path: Path) -> None:
         )
         assert status == 200
         assert applied["ok"] is True
+        applied_bytes = snapshot_path.read_bytes()
+        assert applied_bytes != original_bytes
+        assert json.loads(applied_bytes) == manifest
 
         status, conflict = _post_json(
             server,
@@ -321,6 +336,7 @@ def test_config_preview_apply_cas(tmp_path: Path) -> None:
         )
         assert status == 409
         assert conflict["reason_code"] == "OLIMPO_CONFIG_CONFLICT"
+        assert snapshot_path.read_bytes() == applied_bytes
     finally:
         server.shutdown()
 

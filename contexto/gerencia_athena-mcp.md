@@ -3,7 +3,7 @@
 ## SNAPSHOT V1 TERMINAL (2026-08-31)
 
 - **Runtime baseline de evidência:** `5319763`; HEAD/origin/main corrente deve ser consultado diretamente via Git.
-- **Runtime baseline:** `5319763` — P0 `PASS`; suíte protegida `715 passed, 3 deselected`; sete tools MCP; beta equivalente ao runtime e smoke-verified.
+- **Runtime baseline:** `5319763` — P0 `PASS`; suíte protegida histórica `715 passed, 3 deselected`; sete tools MCP; beta equivalente ao runtime e smoke-verified. Validação corrente após hardening de instalação: `716 passed, 3 deselected`.
 - **ADR-0001:** escopo v1 terminal — Content Gate `OPTIONAL_FUTURE`; Metis `DEFERRED_BY_ADR`; IAProxy zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`; Olimpo O-2..O-5 `OPTIONAL_FUTURE`.
 - **OLIMPO-0:** biblioteca HTTP opt-in em loopback para observação e publicação de configuração validada por preview + CAS; não executa, cancela nem autoriza tarefas.
 - **WIP de engenharia:** vazio após o fechamento v1. Itens opcionais acima são estados terminais, não bloqueios ativos.
