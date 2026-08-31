@@ -2,7 +2,7 @@
 
 ## SNAPSHOT V1 TERMINAL (2026-08-31)
 
-- **HEAD corrente:** verificar via Git; na abertura desta reconciliação o repositório estava limpo e alinhado em `ac000d8`.
+- **Runtime baseline de evidência:** `5319763`; HEAD/origin/main corrente deve ser consultado diretamente via Git.
 - **Runtime baseline:** `5319763` — P0 `PASS`; suíte protegida `715 passed, 3 deselected`; sete tools MCP; beta equivalente ao runtime e smoke-verified.
 - **ADR-0001:** escopo v1 terminal — Content Gate `OPTIONAL_FUTURE`; Metis `DEFERRED_BY_ADR`; IAProxy zchat/kimi `OPTIONAL_NOT_CONFIGURED`; aceite externo `EXTERNAL_ACCEPTANCE_PENDING`; SSH `INTENTIONALLY_CLOSED`; Olimpo O-2..O-5 `OPTIONAL_FUTURE`.
 - **OLIMPO-0:** biblioteca HTTP opt-in em loopback para observação e publicação de configuração validada por preview + CAS; não executa, cancela nem autoriza tarefas.

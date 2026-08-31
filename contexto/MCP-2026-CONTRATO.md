@@ -18,7 +18,7 @@ identificada por `_meta` em cada requisição, ou a abertura legada por
   validado quando presente;
 - responder `tools/list` e `tools/call` modernos com `resultType: complete`;
 - anunciar exatamente as sete tools atuais, em ordem determinística;
-- declarar schemas 2020-12 e, quando seguro, `outputSchema`/`structuredContent`;
+- declarar schemas de entrada 2020-12; `outputSchema` e `structuredContent` permanecem explicitamente fora desta fatia para preservar o baseline das sete tools;
 - preservar o fluxo legado `initialize`/`notifications/initialized` e seus
   envelopes atuais;
 - corrigir a identidade anunciada de `0.0.0` para a versão do pacote `0.2.0`;
